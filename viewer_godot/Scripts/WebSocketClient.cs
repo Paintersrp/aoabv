@@ -56,7 +56,7 @@ public partial class WebSocketClient : Node
         while (_peer.GetAvailablePacketCount() > 0)
         {
             var packet = _peer.GetPacket();
-            if (!_peer.WasTextPacket())
+            if (!_peer.WasStringPacket())
             {
                 continue;
             }
