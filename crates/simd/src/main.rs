@@ -23,13 +23,13 @@ use tracing::{error, info};
 #[derive(Parser, Debug)]
 #[command(name = "simd", about = "Ages of a Borrowed Voice streaming daemon")]
 struct Args {
-    /// Deterministic seed driving the entire world.
+    /// JSON seed document describing the initial world configuration.
     #[arg(long)]
-    seed: u64,
+    seed: Option<PathBuf>,
 
-    /// Optional JSON seed file overriding procedural defaults.
-    #[arg(long = "seed-file")]
-    seed_file: Option<PathBuf>,
+    /// Override the deterministic world seed when desired.
+    #[arg(long = "world-seed")]
+    world_seed: Option<u64>,
 
     /// Procedural world width when not using a JSON seed file.
     #[arg(long)]
@@ -58,18 +58,20 @@ struct AppState {
 }
 
 fn load_seed(args: &Args) -> Result<Seed> {
-    if let Some(path) = &args.seed_file {
+    if let Some(path) = &args.seed {
         return Seed::load_from_path(path)
             .with_context(|| format!("failed to load seed from {:?}", path));
     }
 
     let width = args
         .width
-        .context("--width is required when --seed-file is not provided")?;
+        .context("--width is required when --seed is not provided")?;
     let height = args
         .height
-        .context("--height is required when --seed-file is not provided")?;
-    let seed = args.seed;
+        .context("--height is required when --seed is not provided")?;
+    let seed = args
+        .world_seed
+        .context("--world-seed is required when --seed is not provided")?;
 
     // TODO(agents): rationale - use fixed procedural defaults when no seed file is supplied.
     Ok(Seed {
@@ -100,7 +102,7 @@ async fn main() -> Result<()> {
 
     let seed = load_seed(&args)?;
     let frame_period = Duration::from_secs_f64(1.0 / f64::from(args.fps));
-    let world = build_world(&seed, Some(args.seed));
+    let world = build_world(&seed, args.world_seed);
 
     let (tx, _rx) = broadcast::channel::<String>(128);
     let state = AppState { tx: tx.clone() };
