@@ -38,7 +38,8 @@ pub struct SeedRealization {
 
 impl SeedDocument {
     pub fn load_from_path(path: &Path) -> Result<Self> {
-        let file = File::open(path).with_context(|| format!("failed to open seed file {:?}", path))?;
+        let file =
+            File::open(path).with_context(|| format!("failed to open seed file {:?}", path))?;
         Self::from_reader(BufReader::new(file))
     }
 
@@ -54,7 +55,8 @@ impl SeedDocument {
             for x in 0..self.width {
                 let latitude = latitude_from_grid(y, self.height);
                 let elevation = sample_elevation(world_seed, &self.elevation_noise, x, y);
-                let (water, soil) = initial_resources(world_seed, &self.humidity_bias, latitude, elevation, x, y);
+                let (water, soil) =
+                    initial_resources(world_seed, &self.humidity_bias, latitude, elevation, x, y);
                 regions.push(Region {
                     id,
                     x,
@@ -86,7 +88,9 @@ fn sample_elevation(seed: u64, noise: &ElevationNoise, x: u32, y: u32) -> f64 {
     let mut amplitude = noise.amp;
     let mut total = 0.0;
     while octave < noise.octaves {
-        let mut rng = SplitMix64::new(seed ^ noise.seed ^ ((x as u64) << 16) ^ ((y as u64) << 32) ^ octave as u64);
+        let mut rng = SplitMix64::new(
+            seed ^ noise.seed ^ ((x as u64) << 16) ^ ((y as u64) << 32) ^ octave as u64,
+        );
         let sample = rng.next_signed_unit();
         total += sample * amplitude * 500.0;
         amplitude *= 0.5;
@@ -112,6 +116,7 @@ fn initial_resources(
     let water = clamp_resource(((base - elevation_penalty + noise) * 10_000.0) as i32);
     let soil_base = (base - 0.1).clamp(0.05, 0.9);
     let soil_noise = rng.next_signed_unit() * 0.04;
-    let soil = clamp_resource(((soil_base - elevation_penalty * 0.5 + soil_noise) * 10_000.0) as i32);
+    let soil =
+        clamp_resource(((soil_base - elevation_penalty * 0.5 + soil_noise) * 10_000.0) as i32);
     (water, soil)
 }

@@ -8,7 +8,10 @@ use sim_core::io::seed::SeedDocument;
 use sim_core::Simulation;
 
 #[derive(Parser, Debug)]
-#[command(name = "simstep", about = "Batch runner for deterministic NDJSON frames")]
+#[command(
+    name = "simstep",
+    about = "Batch runner for deterministic NDJSON frames"
+)]
 struct Args {
     /// Path to the seed JSON document.
     #[arg(long)]
@@ -38,11 +41,13 @@ fn main() -> Result<()> {
         .with_context(|| format!("failed to read seed {:?}", args.seed))?;
     let mut simulation = Simulation::from_seed_document(seed_doc, args.world_seed)?;
 
-    let file = File::create(&args.out).with_context(|| format!("failed to create {:?}", args.out))?;
+    let file =
+        File::create(&args.out).with_context(|| format!("failed to create {:?}", args.out))?;
     let mut writer = BufWriter::new(file);
 
     let mut cause_writer = if let Some(path) = &args.cause_log {
-        let file = File::create(path).with_context(|| format!("failed to create cause log {:?}", path))?;
+        let file =
+            File::create(path).with_context(|| format!("failed to create cause log {:?}", path))?;
         Some(BufWriter::new(file))
     } else {
         None

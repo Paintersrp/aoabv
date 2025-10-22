@@ -45,11 +45,7 @@ impl Diff {
             drought,
             flood,
         };
-        if let Some(existing) = self
-            .hazards
-            .iter_mut()
-            .find(|h| h.region == hazard.region)
-        {
+        if let Some(existing) = self.hazards.iter_mut().find(|h| h.region == hazard.region) {
             existing.drought = hazard.drought;
             existing.flood = hazard.flood;
         } else {
@@ -74,7 +70,10 @@ impl Diff {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.biome.is_empty() && self.water.is_empty() && self.soil.is_empty() && self.hazards.is_empty()
+        self.biome.is_empty()
+            && self.water.is_empty()
+            && self.soil.is_empty()
+            && self.hazards.is_empty()
     }
 }
 

@@ -108,10 +108,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
         let biome = classify_biome(&belt, dryness);
         if biome != region.biome {
             diff.record_biome(region.index(), biome);
-            chronicle.push(format!(
-                "Region {} shifted biome to {}",
-                region.id, biome
-            ));
+            chronicle.push(format!("Region {} shifted biome to {}", region.id, biome));
         }
         causes.push(Cause::new(
             format!("region:{}/biome", region.id),

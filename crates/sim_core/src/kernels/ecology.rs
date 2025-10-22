@@ -81,7 +81,11 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
         }
 
         if drought_level > 3_000 {
-            highlights.push(Highlight::hazard(region.id, "drought", drought_level as f32 / RESOURCE_MAX as f32));
+            highlights.push(Highlight::hazard(
+                region.id,
+                "drought",
+                drought_level as f32 / RESOURCE_MAX as f32,
+            ));
             chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
             causes.push(Cause::new(
                 format!("region:{}/water", region.id),
@@ -89,7 +93,11 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
                 Some(format!("level={}", drought_level)),
             ));
         } else if flood_level > 1_000 {
-            highlights.push(Highlight::hazard(region.id, "flood", flood_level as f32 / RESOURCE_MAX as f32));
+            highlights.push(Highlight::hazard(
+                region.id,
+                "flood",
+                flood_level as f32 / RESOURCE_MAX as f32,
+            ));
             chronicle.push(format!("Region {} endures seasonal floods.", region.id));
             causes.push(Cause::new(
                 format!("region:{}/water", region.id),
@@ -141,7 +149,13 @@ mod tests {
         );
         let mut rng = ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
         let output = run(&world, &mut rng);
-        assert!(output.diff.water.values().next().unwrap_or(&0).is_positive());
+        assert!(output
+            .diff
+            .water
+            .values()
+            .next()
+            .unwrap_or(&0)
+            .is_positive());
     }
 
     proptest! {

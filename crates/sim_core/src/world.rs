@@ -9,7 +9,10 @@ pub struct HazardLevels {
 
 impl Default for HazardLevels {
     fn default() -> Self {
-        Self { drought: 0, flood: 0 }
+        Self {
+            drought: 0,
+            flood: 0,
+        }
     }
 }
 
