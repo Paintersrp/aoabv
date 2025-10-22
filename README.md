@@ -1,37 +1,75 @@
 # Ages of a Borrowed Voice — Simulation Workspace
 
-This repository hosts the deterministic Rust simulation kernels for *Ages of a Borrowed Voice*. The workspace is organised as a triad of crates:
+## Project overview
 
-* `sim_core` — pure kernels, world model, diff reducer, and IO contracts.
-* `simd` — long-lived daemon that streams NDJSON frames over WebSocket.
-* `simstep` — batch runner that executes a fixed number of ticks and emits NDJSON to disk for golden tests.
+This workspace contains the deterministic Rust simulation stack for *Ages of a Borrowed Voice* and the accompanying Godot 4.5 viewer shell.
 
-The viewer (Godot 4.5) will connect to the daemon and consume the `sim_core` frame schema. The data contract for NDJSON frames, seeds, and cause codes is documented in [`/docs`](docs/).
+* `sim_core` — pure kernels, world model, diff reducer, IO contracts, and determinism guarantees.
+* `simd` — long-lived daemon that streams NDJSON frames over WebSocket at `/stream`.
+* `simstep` — batch runner that executes a fixed number of ticks and emits NDJSON to disk for golden comparisons.
+* `viewer_godot` — Godot 4.5 project that attaches to the daemon and visualises the grid.
 
-## Getting started
+The NDJSON frame, cause code, and systems contracts that bind these components together are captured in [`/docs`](docs/).
 
-1. Install the pinned Rust toolchain (`rustup show active-toolchain` should report `1.76.0`).
-2. Fetch dependencies and build:
-   ```bash
-   cargo build -p simd -p simstep
-   # or: make build
-   ```
-3. Run the batch runner to reproduce the golden fixtures:
-   ```bash
-   cargo run -p simstep -- --seed ./testdata/seeds/wet_equator.json --ticks 8 --out ./target/tmp.ndjson
-   diff -u ./target/tmp.ndjson ./testdata/golden/wet_equator_8ticks.ndjson
-   # or: make golden
-   ```
-4. Start the streaming daemon:
-   ```bash
-   cargo run -p simd -- --seed ./testdata/seeds/wet_equator.json --port 8080
-   # or: make simd
-   ```
-   The daemon serves a WebSocket endpoint at `ws://localhost:8080/stream`. Each message is a single NDJSON line conforming to §3 of `AGENTS.md`.
+## Toolchain
 
-## Determinism contract
+Rust **1.76.0** is pinned via [`rust-toolchain.toml`](rust-toolchain.toml). Install it with `rustup` (the Makefile assumes the toolchain already exists) and ensure `rustfmt`/`clippy` components are available. Godot **4.5** (with .NET support for C# scripting) is required to open the viewer project.
 
-All kernels derive deterministic substreams from the world seed, tick, and stage identifier. Given identical inputs the NDJSON output is byte-for-byte identical across runs and platforms. Property tests enforce water/soil bounds and clamping behaviour, and the golden fixtures are regenerated exclusively through `simstep`.
+## Build and run commands
+
+### Build the Rust binaries
+
+```bash
+cargo build -p simd -p simstep
+# or: make build
+```
+
+### Run the streaming daemon (`simd`)
+
+```bash
+cargo run -p simd -- --seed ./testdata/seeds/wet_equator.json --port 8080
+# or: make simd
+```
+
+The daemon exposes a WebSocket endpoint at `ws://localhost:8080/stream`, emitting one NDJSON frame per line that matches the systems contract.
+
+### Run the batch runner / regenerate golden runs (`simstep`)
+
+```bash
+cargo run -p simstep -- \
+  --seed ./testdata/seeds/wet_equator.json \
+  --ticks 8 \
+  --out ./target/tmp.ndjson
+diff -u ./target/tmp.ndjson ./testdata/golden/wet_equator_8ticks.ndjson
+# or: make golden
+```
+
+Use these commands whenever regenerating golden fixtures; include a brief note in commit messages describing why they changed.
+
+### Launch the Godot viewer
+
+```bash
+godot4 --path ./viewer_godot
+# or open the folder in the Godot editor UI
+```
+
+With the daemon running, select the main scene (`Main.tscn`) and press **Play** to connect to `ws://localhost:8080/stream` and render live frames.
+
+## Assumptions & scope
+
+* Seeds in [`/testdata/seeds`](testdata/seeds/) describe world dimensions and generator parameters for climate/ecology kernels.
+* Golden NDJSON outputs in [`/testdata/golden`](testdata/golden/) are authoritative references for regression testing.
+* The viewer is observational only in v0.0—no gameplay UI or input loops beyond connecting to the stream.
+
+## Determinism expectations
+
+Simulation stages derive deterministic RNG substreams from `(seed, stage_id, tick)`. Identical seeds and tick counts must yield byte-identical NDJSON across runs and supported platforms. Water and soil stay within `0..=10000`, diffs are sparse and index-sorted, and highlights include typed payloads. When modifying kernels, update golden runs through `simstep` and document the rationale.
+
+## Documentation
+
+* [`/docs/systems_contract.md`](docs/systems_contract.md) — authoritative wire/data model for frames, seeds, and world state.
+* [`/docs/cause_codes.md`](docs/cause_codes.md) — canonical list of cause codes emitted by the simulation.
+* [`/docs/roadmap.md`](docs/roadmap.md) — release timeline, milestones, and deferred features.
 
 ## Repository layout
 
