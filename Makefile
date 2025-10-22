@@ -1,8 +1,8 @@
 CARGO ?= cargo
-SIMSTEP_SEED ?= ./testdata/seeds/wet_equator.json
-SIMSTEP_TICKS ?= 8
+SIMSTEP_SEED ?= ./testdata/seeds/run_seed_wet_equator.json
+SIMSTEP_TICKS ?= 120
 SIMSTEP_OUT ?= ./target/tmp.ndjson
-GOLDEN ?= ./testdata/golden/wet_equator_8ticks.ndjson
+GOLDEN ?= ./testdata/golden/run_seed_wet_equator.ndjson
 
 .PHONY: build fmt clippy test check simd simstep golden clean
 

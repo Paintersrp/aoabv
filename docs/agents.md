@@ -11,6 +11,6 @@ This repository contains only the deterministic simulation stack. The viewer liv
 * `cargo fmt` — format Rust code.
 * `cargo clippy -D warnings` — lint and keep deterministic APIs honest.
 * `cargo test -p sim_core` — run unit + property tests.
-* `cargo run -p simstep -- --seed ./testdata/seeds/wet_equator.json --ticks 8 --out ./target/tmp.ndjson` — reproduce the golden run.
+* `cargo run -p simstep -- --seed ./testdata/seeds/run_seed_wet_equator.json --ticks 120 --out ./target/tmp.ndjson` — reproduce the golden run.
 
 Ensure that every new cause code is reflected in [`docs/cause_codes.md`](cause_codes.md) and that wire changes are documented in [`docs/systems_contract.md`](systems_contract.md).
