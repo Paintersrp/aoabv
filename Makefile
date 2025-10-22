@@ -21,7 +21,7 @@ test:
 check: fmt clippy build test
 
 simd:
-	$(CARGO) run -p simd -- --seed $(SIMSTEP_SEED) --port 8080
+	$(CARGO) run -p simd -- --seed $(SIMSTEP_SEED) --port 8787
 
 simstep:
 	$(CARGO) run -p simstep -- --seed $(SIMSTEP_SEED) --ticks $(SIMSTEP_TICKS) --out $(SIMSTEP_OUT)
