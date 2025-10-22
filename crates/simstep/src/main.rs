@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use sim_core::io::frame::make_frame;
 use sim_core::io::seed::SeedDocument;
 use sim_core::Simulation;
 
@@ -55,10 +56,20 @@ fn main() -> Result<()> {
 
     for _ in 0..args.ticks {
         let outputs = simulation.tick()?;
-        let line = outputs.frame.to_ndjson()?;
+        let sim_core::TickOutputs {
+            t,
+            diff,
+            highlights,
+            chronicle,
+            era_end,
+            causes,
+        } = outputs;
+
+        let frame = make_frame(t, diff, highlights, chronicle, era_end);
+        let line = frame.to_ndjson()?;
         writer.write_all(line.as_bytes())?;
         if let Some(writer) = cause_writer.as_mut() {
-            for cause in outputs.causes {
+            for cause in causes {
                 let json = serde_json::to_string(&cause)?;
                 writer.write_all(json.as_bytes())?;
                 writer.write_all(b"\n")?;

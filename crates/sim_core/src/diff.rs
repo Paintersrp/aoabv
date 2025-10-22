@@ -198,30 +198,3 @@ impl<'a> Serialize for ResourceDeltas<'a> {
         map.end()
     }
 }
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Highlight {
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub region: u32,
-    pub info: HighlightInfo,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct HighlightInfo {
-    pub kind: String,
-    pub level: f32,
-}
-
-impl Highlight {
-    pub fn hazard(region: u32, kind: &str, level: f32) -> Self {
-        Self {
-            kind: "hazard_flag".to_string(),
-            region,
-            info: HighlightInfo {
-                kind: kind.to_string(),
-                level,
-            },
-        }
-    }
-}

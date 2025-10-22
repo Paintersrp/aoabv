@@ -9,18 +9,22 @@ pub mod world;
 
 use anyhow::Result;
 use cause::Entry;
-use diff::{Diff, Highlight};
+use diff::Diff;
 use fixed::WATER_MAX;
-use io::frame::Frame;
+use io::frame::Highlight;
 use io::seed::{SeedDocument, SeedRealization};
 use kernels::{climate, ecology};
 use reduce::apply;
 use rng::Stream;
 use world::World;
 
-/// Result of a single simulation tick.
+/// Result of a single simulation tick before serialization.
 pub struct TickOutputs {
-    pub frame: Frame,
+    pub t: u64,
+    pub diff: Diff,
+    pub highlights: Vec<Highlight>,
+    pub chronicle: Vec<String>,
+    pub era_end: bool,
     pub causes: Vec<Entry>,
 }
 
@@ -106,13 +110,11 @@ impl Simulation {
         let causes = diff_for_frame.take_causes();
 
         Ok(TickOutputs {
-            frame: Frame {
-                t: next_tick,
-                diff: diff_for_frame,
-                highlights,
-                chronicle,
-                era_end: false,
-            },
+            t: next_tick,
+            diff: diff_for_frame,
+            highlights,
+            chronicle,
+            era_end: false,
             causes,
         })
     }
