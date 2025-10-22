@@ -1,0 +1,16 @@
+; Engine configuration file.
+; It's best edited using the Godot editor.
+; If you edit it manually, please keep the structure.
+
+config_version=5
+
+[application]
+config/name="Ages Viewer"
+run/main_scene="res://Scenes/Main.tscn"
+config/features=PackedStringArray("4.5", "C#")
+
+[dotnet]
+project/assembly_name="viewer_godot"
+
+[rendering]
+renderer/rendering_method="forward_plus"

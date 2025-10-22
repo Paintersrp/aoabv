@@ -1,0 +1,40 @@
+[gd_scene load_steps=4 format=3 uid="uid://aoabv-main"]
+
+[ext_resource type="Script" path="res://Scripts/WebSocketClient.cs" id="1_4kmsd"]
+[ext_resource type="Script" path="res://Scripts/MapRenderer.cs" id="2_k4jg7"]
+[ext_resource type="Script" path="res://Scripts/TimelineHud.cs" id="3_1f8su"]
+
+[node name="Main" type="Node"]
+script = ExtResource("1_4kmsd")
+
+[node name="MapCanvas" type="Node2D" parent="."]
+script = ExtResource("2_k4jg7")
+
+[node name="HudLayer" type="CanvasLayer" parent="."]
+layer = 1
+
+[node name="HudRoot" type="MarginContainer" parent="HudLayer"]
+anchor_right = 0.0
+anchor_bottom = 0.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 0.0
+offset_bottom = 0.0
+
+[node name="HudStack" type="VBoxContainer" parent="HudLayer/HudRoot"]
+script = ExtResource("3_1f8su")
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="HudLayer/HudRoot/HudStack"]
+text = "Status: Initialising"
+
+[node name="TickLabel" type="Label" parent="HudLayer/HudRoot/HudStack"]
+text = "Tick: —"
+
+[node name="HighlightLabel" type="Label" parent="HudLayer/HudRoot/HudStack"]
+text = "Highlights: 0"
+
+[node name="ChronicleLabel" type="Label" parent="HudLayer/HudRoot/HudStack"]
+text = "Chronicle: —"
+autowrap_mode = 3
+
