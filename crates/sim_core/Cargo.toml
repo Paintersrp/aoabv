@@ -1,0 +1,23 @@
+[package]
+name = "sim_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+proptest = { workspace = true, optional = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+rand_seeder = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+proptest-support = ["dep:proptest"]

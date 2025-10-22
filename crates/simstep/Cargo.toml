@@ -1,0 +1,11 @@
+[package]
+name = "simstep"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+sim_core = { path = "../sim_core" }
+tokio = { workspace = true, features = ["rt", "macros"] }
+clap = { workspace = true }
