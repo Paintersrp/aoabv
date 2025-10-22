@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use sim_core::io::frame::make_frame;
 use sim_core::io::seed::{build_world, Humidity, Noise, Seed};
-use sim_core::Simulation;
+use sim_core::{collect_highlights, tick_once};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -123,8 +123,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     let seed = load_seed(&args)?;
-    let world = build_world(&seed, args.world_seed);
-    let mut simulation = Simulation::from_world(world);
+    let mut world = build_world(&seed, args.world_seed);
 
     let file =
         File::create(&args.out).with_context(|| format!("failed to create {:?}", args.out))?;
@@ -139,17 +138,13 @@ fn main() -> Result<()> {
     };
 
     for _ in 0..args.ticks {
-        let outputs = simulation.tick()?;
-        let sim_core::TickOutputs {
-            t,
-            diff,
-            highlights,
-            chronicle,
-            era_end,
-            causes,
-        } = outputs;
+        let next_tick = world.tick + 1;
+        let seed = world.seed;
+        let (diff, chronicle) = tick_once(&mut world, seed, next_tick)?;
+        let highlights = collect_highlights(&world, &diff);
+        let causes = diff.causes.clone();
 
-        let frame = make_frame(t, diff, highlights, chronicle, era_end);
+        let frame = make_frame(next_tick, diff, highlights, chronicle, false);
         let line = frame.to_ndjson()?;
         writer.write_all(line.as_bytes())?;
         if let Some(writer) = cause_writer.as_mut() {
