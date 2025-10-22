@@ -89,7 +89,7 @@ fn classify_biome(belt: &LatitudeBelt, dryness: f64) -> u8 {
 
 fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
     let moisture = resource_ratio(region.water);
-    let elevation = (region.elevation_m / 3_000.0).clamp(0.0, 1.0);
+    let elevation = (f64::from(region.elevation_m) / 3_000.0).clamp(0.0, 1.0);
     let baseline = 1.0 - moisture;
     (baseline * 0.6 + elevation * 0.3 + seasonal_shift * 0.1).clamp(0.0, 1.0)
 }
@@ -134,7 +134,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
 mod tests {
     use super::*;
     use crate::rng::ProjectRng;
-    use crate::world::{HazardLevels, Region, World};
+    use crate::world::{Hazards, Region, World};
 
     #[test]
     fn biome_classification_varies_by_latitude() {
@@ -143,12 +143,12 @@ mod tests {
                 id: i,
                 x: i,
                 y: 0,
-                elevation_m: 100.0,
+                elevation_m: 100,
                 latitude_deg: -60.0 + f64::from(i) * 30.0,
                 biome: 0,
                 water: 5_000,
                 soil: 5_000,
-                hazards: HazardLevels::default(),
+                hazards: Hazards::default(),
             })
             .collect();
         let world = World::new(11, 5, 1, regions);

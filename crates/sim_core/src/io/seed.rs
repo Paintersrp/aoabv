@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::fixed::clamp_resource;
 use crate::rng::SplitMix64;
-use crate::world::{HazardLevels, Region, World};
+use crate::world::{Hazards, Region, World};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SeedDocument {
@@ -66,7 +66,7 @@ impl SeedDocument {
                     biome: 0,
                     water,
                     soil,
-                    hazards: HazardLevels::default(),
+                    hazards: Hazards::default(),
                 });
                 id += 1;
             }
@@ -83,7 +83,7 @@ fn latitude_from_grid(y: u32, height: u32) -> f64 {
     90.0 - ratio * 180.0
 }
 
-fn sample_elevation(seed: u64, noise: &ElevationNoise, x: u32, y: u32) -> f64 {
+fn sample_elevation(seed: u64, noise: &ElevationNoise, x: u32, y: u32) -> i32 {
     let mut octave = 0;
     let mut amplitude = noise.amp;
     let mut total = 0.0;
@@ -96,14 +96,14 @@ fn sample_elevation(seed: u64, noise: &ElevationNoise, x: u32, y: u32) -> f64 {
         amplitude *= 0.5;
         octave += 1;
     }
-    (total + 500.0).clamp(0.0, 3000.0)
+    (total + 500.0).clamp(0.0, 3_000.0).round() as i32
 }
 
 fn initial_resources(
     seed: u64,
     humidity: &HumidityBias,
     latitude_deg: f64,
-    elevation_m: f64,
+    elevation_m: i32,
     x: u32,
     y: u32,
 ) -> (u16, u16) {
@@ -111,7 +111,7 @@ fn initial_resources(
     let latitude_ratio = (latitude_deg.abs() / 90.0).clamp(0.0, 1.0);
     let bias = humidity.equator + (humidity.poles - humidity.equator) * latitude_ratio;
     let base = (0.55 + bias).clamp(0.05, 0.95);
-    let elevation_penalty = (elevation_m / 3_000.0).clamp(0.0, 1.0) * 0.3;
+    let elevation_penalty = (f64::from(elevation_m) / 3_000.0).clamp(0.0, 1.0) * 0.3;
     let noise = rng.next_signed_unit() * 0.05;
     let water = clamp_resource(((base - elevation_penalty + noise) * 10_000.0).round() as i32);
     let soil_base = (base - 0.1).clamp(0.05, 0.9);

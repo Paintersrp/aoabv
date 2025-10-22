@@ -62,7 +62,11 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
         let noise = (region_rng.next_signed_unit() * 25.0) as i32;
 
         let water_delta = (water_drift + noise).clamp(-180, 180);
-        let noise_half = if noise >= 0 { noise / 2 } else { (noise - 1) / 2 };
+        let noise_half = if noise >= 0 {
+            noise / 2
+        } else {
+            (noise - 1) / 2
+        };
         let soil_delta = (soil_drift + noise_half).clamp(-120, 120);
 
         if water_delta != 0 {
@@ -140,12 +144,12 @@ mod tests {
                 id: 0,
                 x: 0,
                 y: 0,
-                elevation_m: 100.0,
+                elevation_m: 100,
                 latitude_deg: 0.0,
                 biome: 5,
                 water: 2_000,
                 soil: 2_000,
-                hazards: crate::world::HazardLevels::default(),
+                hazards: crate::world::Hazards::default(),
             }],
         );
         let mut rng = ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
@@ -166,7 +170,7 @@ mod tests {
             soil in 0u16..=RESOURCE_MAX,
             biome in 0u8..=5
         ) {
-            use crate::world::{HazardLevels, Region, World};
+            use crate::world::{Hazards, Region, World};
             let world = World::new(
                 1,
                 1,
@@ -175,12 +179,12 @@ mod tests {
                     id: 0,
                     x: 0,
                     y: 0,
-                    elevation_m: 100.0,
+                    elevation_m: 100,
                     latitude_deg: 0.0,
                     biome,
                     water,
                     soil,
-                    hazards: HazardLevels::default(),
+                    hazards: Hazards::default(),
                 }],
             );
             let mut rng = crate::rng::ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
