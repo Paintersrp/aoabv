@@ -23,49 +23,25 @@ use tracing::{error, info};
 #[derive(Parser, Debug)]
 #[command(name = "simd", about = "Ages of a Borrowed Voice streaming daemon")]
 struct Args {
-    /// Path to the seed JSON document.
-    #[arg(long = "seed")]
-    seed_path: Option<PathBuf>,
-
-    /// Optional seed name override when constructing from CLI parameters.
+    /// Deterministic seed driving the entire world.
     #[arg(long)]
-    seed_name: Option<String>,
+    seed: u64,
 
-    /// World width when constructing from CLI parameters.
+    /// Optional JSON seed file overriding procedural defaults.
+    #[arg(long = "seed-file")]
+    seed_file: Option<PathBuf>,
+
+    /// Procedural world width when not using a JSON seed file.
     #[arg(long)]
     width: Option<u32>,
 
-    /// World height when constructing from CLI parameters.
+    /// Procedural world height when not using a JSON seed file.
     #[arg(long)]
     height: Option<u32>,
 
-    /// Elevation noise octaves when constructing from CLI parameters.
-    #[arg(long = "noise-octaves")]
-    noise_octaves: Option<u8>,
-
-    /// Elevation noise frequency when constructing from CLI parameters.
-    #[arg(long = "noise-freq")]
-    noise_freq: Option<f64>,
-
-    /// Elevation noise amplitude when constructing from CLI parameters.
-    #[arg(long = "noise-amp")]
-    noise_amp: Option<f64>,
-
-    /// Elevation noise RNG seed when constructing from CLI parameters.
-    #[arg(long = "noise-seed")]
-    noise_seed: Option<u64>,
-
-    /// Equatorial humidity bias when constructing from CLI parameters.
-    #[arg(long = "humidity-equator")]
-    humidity_equator: Option<f64>,
-
-    /// Polar humidity bias when constructing from CLI parameters.
-    #[arg(long = "humidity-poles")]
-    humidity_poles: Option<f64>,
-
-    /// Optional override for the world seed.
-    #[arg(long)]
-    world_seed: Option<u64>,
+    /// Target frames per second for ticking the simulation.
+    #[arg(long, default_value_t = 4u32, value_parser = clap::value_parser!(u32).range(1..=60))]
+    fps: u32,
 
     /// Address to bind (defaults to 127.0.0.1).
     #[arg(long, default_value = "127.0.0.1")]
@@ -74,10 +50,6 @@ struct Args {
     /// Port to listen on for WebSocket clients.
     #[arg(long, default_value_t = 8787)]
     port: u16,
-
-    /// Milliseconds to sleep between ticks.
-    #[arg(long, default_value_t = 250u64)]
-    tick_ms: u64,
 }
 
 #[derive(Clone)]
@@ -86,49 +58,33 @@ struct AppState {
 }
 
 fn load_seed(args: &Args) -> Result<Seed> {
-    if let Some(path) = &args.seed_path {
+    if let Some(path) = &args.seed_file {
         return Seed::load_from_path(path)
             .with_context(|| format!("failed to load seed from {:?}", path));
     }
 
     let width = args
         .width
-        .context("--width is required when --seed is not provided")?;
+        .context("--width is required when --seed-file is not provided")?;
     let height = args
         .height
-        .context("--height is required when --seed is not provided")?;
-    let noise_octaves = args
-        .noise_octaves
-        .context("--noise-octaves is required when --seed is not provided")?;
-    let noise_freq = args
-        .noise_freq
-        .context("--noise-freq is required when --seed is not provided")?;
-    let noise_amp = args
-        .noise_amp
-        .context("--noise-amp is required when --seed is not provided")?;
-    let noise_seed = args
-        .noise_seed
-        .context("--noise-seed is required when --seed is not provided")?;
-    let humidity_equator = args
-        .humidity_equator
-        .context("--humidity-equator is required when --seed is not provided")?;
-    let humidity_poles = args
-        .humidity_poles
-        .context("--humidity-poles is required when --seed is not provided")?;
+        .context("--height is required when --seed-file is not provided")?;
+    let seed = args.seed;
 
+    // TODO(agents): rationale - use fixed procedural defaults when no seed file is supplied.
     Ok(Seed {
-        name: args.seed_name.clone().unwrap_or_else(|| "cli".to_string()),
+        name: format!("cli-{}", seed),
         width,
         height,
         noise: Noise {
-            octaves: noise_octaves,
-            freq: noise_freq,
-            amp: noise_amp,
-            seed: noise_seed,
+            octaves: 3,
+            freq: 0.02,
+            amp: 1.0,
+            seed,
         },
         humidity: Humidity {
-            equator: humidity_equator,
-            poles: humidity_poles,
+            equator: 0.3,
+            poles: -0.2,
         },
     })
 }
@@ -143,7 +99,8 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let seed = load_seed(&args)?;
-    let world = build_world(&seed, args.world_seed);
+    let frame_period = Duration::from_secs_f64(1.0 / f64::from(args.fps));
+    let world = build_world(&seed, Some(args.seed));
 
     let (tx, _rx) = broadcast::channel::<String>(128);
     let state = AppState { tx: tx.clone() };
@@ -188,7 +145,7 @@ async fn main() -> Result<()> {
                 info!(target = "cause", %cause.code, %cause.target, note = ?cause.note);
             }
 
-            sleep(Duration::from_millis(args.tick_ms)).await;
+            sleep(frame_period).await;
         }
     });
 
