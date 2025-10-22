@@ -1,8 +1,10 @@
 use crate::cause::{Code, Entry};
 use crate::diff::{Diff, Highlight};
 use crate::fixed::{resource_ratio, WATER_MAX};
-use crate::rng::StageRng;
+use crate::rng::Stream;
 use crate::world::{Region, World};
+
+pub const STAGE: &str = "kernel:climate";
 
 pub struct ClimateOutput {
     pub diff: Diff,
@@ -93,14 +95,14 @@ fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
     (baseline * 0.6 + elevation * 0.3 + seasonal_shift * 0.1).clamp(0.0, 1.0)
 }
 
-pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
+pub fn run(world: &World, rng: &mut Stream) -> ClimateOutput {
     let mut diff = Diff::default();
     let highlights = Vec::new();
     let mut chronicle = Vec::new();
 
     for region in &world.regions {
         let belt = LatitudeBelt::from_latitude(region.latitude_deg);
-        let mut region_rng = rng.fork_region(region.index());
+        let mut region_rng = rng.derive(region.index() as u64);
         let seasonal_shift = region_rng.next_signed_unit();
         let dryness = dryness_score(region, seasonal_shift);
         let biome = classify_biome(&belt, dryness);
@@ -130,7 +132,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rng::ProjectRng;
+    use crate::rng::Stream;
     use crate::world::{Hazards, Region, World};
 
     #[test]
@@ -149,7 +151,7 @@ mod tests {
             })
             .collect();
         let world = World::new(11, 5, 1, regions);
-        let mut rng = ProjectRng::new(world.seed).stage(crate::rng::Stage::Climate, 1);
+        let mut rng = Stream::from(world.seed, STAGE, 1);
         let output = run(&world, &mut rng);
         assert!(output.diff.biome.len() >= 3);
     }
