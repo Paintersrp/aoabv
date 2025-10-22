@@ -1,6 +1,6 @@
 use crate::cause::{Code, Entry};
 use crate::diff::{Diff, Highlight};
-use crate::fixed::resource_ratio;
+use crate::fixed::{resource_ratio, WATER_MAX};
 use crate::rng::StageRng;
 use crate::world::{Region, World};
 
@@ -87,7 +87,7 @@ fn classify_biome(belt: &LatitudeBelt, dryness: f64) -> u8 {
 }
 
 fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
-    let moisture = resource_ratio(region.water);
+    let moisture = resource_ratio(region.water, WATER_MAX);
     let elevation = (f64::from(region.elevation_m) / 3_000.0).clamp(0.0, 1.0);
     let baseline = 1.0 - moisture;
     (baseline * 0.6 + elevation * 0.3 + seasonal_shift * 0.1).clamp(0.0, 1.0)
