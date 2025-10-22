@@ -10,6 +10,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use clap::Parser;
+use sim_core::io::frame::make_frame;
 use sim_core::io::seed::SeedDocument;
 use sim_core::Simulation;
 use tokio::net::TcpListener;
@@ -81,12 +82,22 @@ async fn main() -> Result<()> {
                 }
             };
 
-            if let Ok(line) = outputs.frame.to_ndjson() {
+            let sim_core::TickOutputs {
+                t,
+                diff,
+                highlights,
+                chronicle,
+                era_end,
+                causes,
+            } = outputs;
+
+            let frame = make_frame(t, diff, highlights, chronicle, era_end);
+            if let Ok(line) = frame.to_ndjson() {
                 if tick_tx.send(line).is_err() {
-                    tracing::trace!("no subscribers for frame t={}", outputs.frame.t);
+                    tracing::trace!("no subscribers for frame t={}", t);
                 }
             }
-            for cause in outputs.causes {
+            for cause in causes {
                 info!(target = "cause", %cause.code, %cause.target, note = ?cause.note);
             }
 
