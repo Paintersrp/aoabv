@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 
 /// Hazard gauges for a region.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct HazardLevels {
+pub struct Hazards {
     pub drought: u16,
     pub flood: u16,
 }
 
-impl Default for HazardLevels {
+impl Default for Hazards {
     fn default() -> Self {
         Self {
             drought: 0,
@@ -22,12 +22,12 @@ pub struct Region {
     pub id: u32,
     pub x: u32,
     pub y: u32,
-    pub elevation_m: f64,
+    pub elevation_m: i32,
     pub latitude_deg: f64,
     pub biome: u8,
     pub water: u16,
     pub soil: u16,
-    pub hazards: HazardLevels,
+    pub hazards: Hazards,
 }
 
 impl Region {
