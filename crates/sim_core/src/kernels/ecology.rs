@@ -1,0 +1,183 @@
+use crate::cause::Cause;
+use crate::diff::{Diff, Highlight};
+use crate::fixed::{apply_resource_delta, resource_ratio, RESOURCE_MAX};
+use crate::rng::StageRng;
+use crate::world::World;
+
+pub struct EcologyOutput {
+    pub diff: Diff,
+    pub causes: Vec<Cause>,
+    pub highlights: Vec<Highlight>,
+    pub chronicle: Vec<String>,
+}
+
+struct BiomeProfile {
+    water_target: f64,
+    soil_target: f64,
+}
+
+fn profile_for_biome(biome: u8) -> BiomeProfile {
+    match biome {
+        5 => BiomeProfile {
+            water_target: 0.85,
+            soil_target: 0.75,
+        },
+        4 => BiomeProfile {
+            water_target: 0.2,
+            soil_target: 0.25,
+        },
+        3 => BiomeProfile {
+            water_target: 0.35,
+            soil_target: 0.4,
+        },
+        2 => BiomeProfile {
+            water_target: 0.55,
+            soil_target: 0.55,
+        },
+        1 => BiomeProfile {
+            water_target: 0.4,
+            soil_target: 0.45,
+        },
+        _ => BiomeProfile {
+            water_target: 0.25,
+            soil_target: 0.3,
+        },
+    }
+}
+
+pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
+    let mut diff = Diff::default();
+    let mut causes = Vec::new();
+    let mut highlights = Vec::new();
+    let mut chronicle = Vec::new();
+
+    for region in &world.regions {
+        let mut region_rng = rng.fork_region(region.index());
+        let profile = profile_for_biome(region.biome);
+        let water_ratio = resource_ratio(region.water);
+        let soil_ratio = resource_ratio(region.soil);
+
+        let water_drift = ((profile.water_target - water_ratio) * 200.0).round() as i32;
+        let soil_drift = ((profile.soil_target - soil_ratio) * 150.0).round() as i32;
+        let noise = (region_rng.next_signed_unit() * 25.0) as i32;
+
+        let water_delta = (water_drift + noise).clamp(-180, 180);
+        let soil_delta = (soil_drift + noise / 2).clamp(-120, 120);
+
+        if water_delta != 0 {
+            diff.record_water_delta(region.index(), water_delta);
+        }
+        if soil_delta != 0 {
+            diff.record_soil_delta(region.index(), soil_delta);
+        }
+
+        let new_water = apply_resource_delta(region.water, water_delta);
+        let new_soil = apply_resource_delta(region.soil, soil_delta);
+
+        let drought_level = RESOURCE_MAX.saturating_sub(new_water);
+        let flood_level = new_water.saturating_sub(RESOURCE_MAX - 1_500);
+        if drought_level != region.hazards.drought || flood_level != region.hazards.flood {
+            diff.record_hazard(region.index(), drought_level, flood_level);
+        }
+
+        if drought_level > 3_000 {
+            highlights.push(Highlight::hazard(region.id, "drought", drought_level as f32 / RESOURCE_MAX as f32));
+            chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
+            causes.push(Cause::new(
+                format!("region:{}/water", region.id),
+                "drought_flag",
+                Some(format!("level={}", drought_level)),
+            ));
+        } else if flood_level > 1_000 {
+            highlights.push(Highlight::hazard(region.id, "flood", flood_level as f32 / RESOURCE_MAX as f32));
+            chronicle.push(format!("Region {} endures seasonal floods.", region.id));
+            causes.push(Cause::new(
+                format!("region:{}/water", region.id),
+                "flood_flag",
+                Some(format!("level={}", flood_level)),
+            ));
+        }
+
+        if new_soil < 2_500 {
+            causes.push(Cause::new(
+                format!("region:{}/soil", region.id),
+                "soil_fertility_low",
+                Some(format!("value={}", new_soil)),
+            ));
+        }
+    }
+
+    EcologyOutput {
+        diff,
+        causes,
+        highlights,
+        chronicle,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rng::ProjectRng;
+    use proptest::prelude::*;
+
+    #[test]
+    fn ecology_moves_resources_toward_targets() {
+        let world = crate::world::World::new(
+            5,
+            1,
+            1,
+            vec![crate::world::Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 100.0,
+                latitude_deg: 0.0,
+                biome: 5,
+                water: 2_000,
+                soil: 2_000,
+                hazards: crate::world::HazardLevels::default(),
+            }],
+        );
+        let mut rng = ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
+        let output = run(&world, &mut rng);
+        assert!(output.diff.water.values().next().unwrap_or(&0).is_positive());
+    }
+
+    proptest! {
+        #[test]
+        fn ecology_diff_keeps_resources_within_bounds(
+            water in 0u16..=RESOURCE_MAX,
+            soil in 0u16..=RESOURCE_MAX,
+            biome in 0u8..=5
+        ) {
+            use crate::world::{HazardLevels, Region, World};
+            let world = World::new(
+                1,
+                1,
+                1,
+                vec![Region {
+                    id: 0,
+                    x: 0,
+                    y: 0,
+                    elevation_m: 100.0,
+                    latitude_deg: 0.0,
+                    biome,
+                    water,
+                    soil,
+                    hazards: HazardLevels::default(),
+                }],
+            );
+            let mut rng = crate::rng::ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
+            let output = run(&world, &mut rng);
+            let water_delta = output.diff.water.values().next().copied().unwrap_or(0);
+            let soil_delta = output.diff.soil.values().next().copied().unwrap_or(0);
+            let next_water = apply_resource_delta(water, water_delta);
+            let next_soil = apply_resource_delta(soil, soil_delta);
+            prop_assert!(next_water <= RESOURCE_MAX);
+            prop_assert!(next_soil <= RESOURCE_MAX);
+            prop_assert!(next_water >= 0);
+            prop_assert!(next_soil >= 0);
+        }
+    }
+}
