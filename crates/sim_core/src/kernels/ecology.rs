@@ -1,4 +1,4 @@
-use crate::cause::Cause;
+use crate::cause::{Code, Entry};
 use crate::diff::{Diff, Highlight};
 use crate::fixed::{apply_resource_delta, resource_ratio, RESOURCE_MAX};
 use crate::rng::StageRng;
@@ -90,9 +90,9 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
                 drought_level as f32 / RESOURCE_MAX as f32,
             ));
             chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
-            diff.record_cause(Cause::new(
+            diff.record_cause(Entry::new(
                 format!("region:{}/water", region.id),
-                "drought_flag",
+                Code::DroughtFlag,
                 Some(format!("level={}", drought_level)),
             ));
         } else if flood_level > 1_000 {
@@ -102,17 +102,17 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
                 flood_level as f32 / RESOURCE_MAX as f32,
             ));
             chronicle.push(format!("Region {} endures seasonal floods.", region.id));
-            diff.record_cause(Cause::new(
+            diff.record_cause(Entry::new(
                 format!("region:{}/water", region.id),
-                "flood_flag",
+                Code::FloodFlag,
                 Some(format!("level={}", flood_level)),
             ));
         }
 
         if new_soil < 2_500 {
-            diff.record_cause(Cause::new(
+            diff.record_cause(Entry::new(
                 format!("region:{}/soil", region.id),
-                "soil_fertility_low",
+                Code::SoilFertilityLow,
                 Some(format!("value={}", new_soil)),
             ));
         }

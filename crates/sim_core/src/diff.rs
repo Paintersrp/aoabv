@@ -1,7 +1,7 @@
 use serde::ser::{SerializeMap, SerializeStruct};
 use serde::{Deserialize, Serialize};
 
-use crate::cause::Cause;
+use crate::cause::Entry;
 use crate::world::World;
 
 #[derive(Clone, Debug, Default)]
@@ -10,7 +10,7 @@ pub struct Diff {
     pub water: Vec<ResourceDelta>,
     pub soil: Vec<ResourceDelta>,
     pub hazards: Vec<HazardEvent>,
-    pub causes: Vec<Cause>,
+    pub causes: Vec<Entry>,
 }
 
 impl Diff {
@@ -50,13 +50,13 @@ impl Diff {
         }
     }
 
-    pub fn record_cause(&mut self, cause: Cause) {
+    pub fn record_cause(&mut self, cause: Entry) {
         self.causes.push(cause);
     }
 
     pub fn extend_causes<I>(&mut self, causes: I)
     where
-        I: IntoIterator<Item = Cause>,
+        I: IntoIterator<Item = Entry>,
     {
         self.causes.extend(causes);
     }
@@ -77,7 +77,7 @@ impl Diff {
         self.causes.extend(other.causes.iter().cloned());
     }
 
-    pub fn take_causes(&mut self) -> Vec<Cause> {
+    pub fn take_causes(&mut self) -> Vec<Entry> {
         std::mem::take(&mut self.causes)
     }
 
