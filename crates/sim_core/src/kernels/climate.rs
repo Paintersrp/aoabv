@@ -1,4 +1,4 @@
-use crate::cause::Cause;
+use crate::cause::{Code, Entry};
 use crate::diff::{Diff, Highlight};
 use crate::fixed::resource_ratio;
 use crate::rng::StageRng;
@@ -108,14 +108,14 @@ pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
             diff.record_biome(region.index(), biome);
             chronicle.push(format!("Region {} shifted biome to {}", region.id, biome));
         }
-        diff.record_cause(Cause::new(
+        diff.record_cause(Entry::new(
             format!("region:{}/biome", region.id),
-            "latitude_belt",
+            Code::LatitudeBelt,
             Some(format!("{}", belt.label())),
         ));
-        diff.record_cause(Cause::new(
+        diff.record_cause(Entry::new(
             format!("region:{}/biome", region.id),
-            "seasonality_variance",
+            Code::SeasonalityVariance,
             Some(format!("{:.3}", seasonal_shift)),
         ));
     }

@@ -8,7 +8,7 @@ pub mod rng;
 pub mod world;
 
 use anyhow::Result;
-use cause::Cause;
+use cause::Entry;
 use diff::Diff;
 use io::frame::Frame;
 use io::seed::{SeedDocument, SeedRealization};
@@ -20,7 +20,7 @@ use world::World;
 /// Result of a single simulation tick.
 pub struct TickOutputs {
     pub frame: Frame,
-    pub causes: Vec<Cause>,
+    pub causes: Vec<Entry>,
 }
 
 /// Deterministic simulation harness that owns the mutable [`World`].
