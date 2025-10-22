@@ -1,0 +1,6 @@
+[workspace]
+members = ["crates/simd", "crates/tracing"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
