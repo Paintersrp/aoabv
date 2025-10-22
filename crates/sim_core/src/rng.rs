@@ -81,7 +81,7 @@ impl StageRng {
     }
 
     pub fn fork_region(&self, region_index: usize) -> RegionRng {
-        let mut seed = self.stream.clone();
+        let seed = self.stream.clone();
         let mut mix = SplitMix64::new(seed.state ^ (region_index as u64 + 0x9E37));
         mix.state = mix.next_u64();
         RegionRng {
