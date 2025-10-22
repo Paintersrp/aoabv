@@ -12,6 +12,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use clap::Parser;
 use sim_core::io::seed::SeedDocument;
 use sim_core::Simulation;
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
@@ -94,11 +95,12 @@ async fn main() -> Result<()> {
         .with_context(|| format!("invalid bind address {}:{}", args.bind, args.port))?;
 
     info!(%addr, "starting simd");
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+    let listener = TcpListener::bind(addr)
         .await
-        .context("server error")?
-        ;
+        .with_context(|| format!("failed to bind {}", addr))?;
+    axum::serve(listener, app.into_make_service())
+        .await
+        .context("server error")?;
     Ok(())
 }
 
