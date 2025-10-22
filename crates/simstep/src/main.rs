@@ -15,8 +15,16 @@ use sim_core::{collect_highlights, tick_once};
 )]
 struct Args {
     /// Path to the seed JSON document.
-    #[arg(long)]
-    seed: PathBuf,
+    #[arg(long = "seed-file", value_name = "PATH")]
+    seed_file: PathBuf,
+
+    /// Override the world seed used when building the initial world state.
+    #[arg(long, value_name = "NUMBER", conflicts_with = "world_seed")]
+    seed: Option<u64>,
+
+    /// Backwards-compatible alias for `--seed`.
+    #[arg(long = "world-seed", value_name = "NUMBER", conflicts_with = "seed")]
+    world_seed: Option<u64>,
 
     /// Number of ticks to execute.
     #[arg(long)]
@@ -25,18 +33,14 @@ struct Args {
     /// Output NDJSON file path.
     #[arg(long)]
     out: PathBuf,
-
-    /// Optional override for the world seed.
-    #[arg(long)]
-    world_seed: Option<u64>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let seed = Seed::load_from_path(&args.seed)
-        .with_context(|| format!("failed to read seed {:?}", args.seed))?;
-    let mut world = build_world(&seed, args.world_seed);
+    let seed = Seed::load_from_path(&args.seed_file)
+        .with_context(|| format!("failed to read seed {:?}", args.seed_file))?;
+    let mut world = build_world(&seed, args.seed.or(args.world_seed));
 
     let file =
         File::create(&args.out).with_context(|| format!("failed to create {:?}", args.out))?;
@@ -56,4 +60,36 @@ fn main() -> Result<()> {
     writer.flush()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+    use clap::{error::ErrorKind, Parser};
+
+    #[test]
+    fn requires_seed_file() {
+        let err =
+            Args::try_parse_from(["simstep", "--ticks", "8", "--out", "out.ndjson"]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn rejects_both_seed_flags() {
+        let err = Args::try_parse_from([
+            "simstep",
+            "--seed-file",
+            "seed.json",
+            "--ticks",
+            "1",
+            "--out",
+            "out.ndjson",
+            "--seed",
+            "1",
+            "--world-seed",
+            "2",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
 }

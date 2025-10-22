@@ -27,7 +27,7 @@ cargo build -p simd -p simstep
 ### Run the streaming daemon (`simd`)
 
 ```bash
-cargo run -p simd -- --seed ./testdata/seeds/run_seed_wet_equator.json --port 8080
+cargo run -p simd -- --seed-file ./testdata/seeds/run_seed_wet_equator.json --port 8080
 # or: make simd
 ```
 
@@ -37,7 +37,7 @@ The daemon exposes a WebSocket endpoint at `ws://localhost:8080/stream`, emittin
 
 ```bash
 cargo run -p simstep -- \
-  --seed ./testdata/seeds/run_seed_wet_equator.json \
+  --seed-file ./testdata/seeds/run_seed_wet_equator.json \
   --ticks 120 \
   --out ./target/tmp.ndjson
 diff -u ./target/tmp.ndjson ./testdata/golden/run_seed_wet_equator.ndjson

@@ -202,7 +202,7 @@ If a requested change violates determinism, data contracts, or non-goals, **refu
 
 **Determinism**
 
-* [ ] Two consecutive `simstep --seed X --ticks N` runs are **byte-identical**
+* [ ] Two consecutive `simstep --seed-file PATH --ticks N` runs are **byte-identical**
 * [ ] Golden NDJSON updated intentionally (commit message explains diffs)
 
 **Data integrity**

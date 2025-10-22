@@ -24,19 +24,23 @@ use tracing::{error, info};
 #[command(name = "simd", about = "Ages of a Borrowed Voice streaming daemon")]
 struct Args {
     /// JSON seed document describing the initial world configuration.
-    #[arg(long)]
-    seed: Option<PathBuf>,
+    #[arg(long = "seed-file", value_name = "PATH")]
+    seed_file: Option<PathBuf>,
 
-    /// Override the deterministic world seed when desired.
-    #[arg(long = "world-seed")]
+    /// Override or supply the world seed for deterministic generation.
+    #[arg(long, value_name = "NUMBER", conflicts_with = "world_seed")]
+    seed: Option<u64>,
+
+    /// Backwards-compatible alias for `--seed`.
+    #[arg(long = "world-seed", value_name = "NUMBER", conflicts_with = "seed")]
     world_seed: Option<u64>,
 
     /// Procedural world width when not using a JSON seed file.
-    #[arg(long)]
+    #[arg(long, requires_all = ["height", "seed"], conflicts_with = "seed_file")]
     width: Option<u32>,
 
     /// Procedural world height when not using a JSON seed file.
-    #[arg(long)]
+    #[arg(long, requires_all = ["width", "seed"], conflicts_with = "seed_file")]
     height: Option<u32>,
 
     /// Target frames per second for ticking the simulation.
@@ -58,20 +62,21 @@ struct AppState {
 }
 
 fn load_seed(args: &Args) -> Result<Seed> {
-    if let Some(path) = &args.seed {
+    if let Some(path) = &args.seed_file {
         return Seed::load_from_path(path)
             .with_context(|| format!("failed to load seed from {:?}", path));
     }
 
     let width = args
         .width
-        .context("--width is required when --seed is not provided")?;
+        .context("--width is required when --seed-file is absent")?;
     let height = args
         .height
-        .context("--height is required when --seed is not provided")?;
+        .context("--height is required when --seed-file is absent")?;
     let seed = args
-        .world_seed
-        .context("--world-seed is required when --seed is not provided")?;
+        .seed
+        .or(args.world_seed)
+        .context("--seed is required when procedurally generating a world")?;
 
     // TODO(agents): rationale - use fixed procedural defaults when no seed file is supplied.
     Ok(Seed {
@@ -102,7 +107,8 @@ async fn main() -> Result<()> {
 
     let seed = load_seed(&args)?;
     let frame_period = Duration::from_secs_f64(1.0 / f64::from(args.fps));
-    let world = build_world(&seed, args.world_seed);
+    let world_seed_override = args.seed.or(args.world_seed);
+    let world = build_world(&seed, world_seed_override);
 
     let (tx, _rx) = broadcast::channel::<String>(128);
     let state = AppState { tx: tx.clone() };
@@ -179,5 +185,39 @@ async fn handle_socket(mut socket: WebSocket, mut rx: broadcast::Receiver<String
             error!("websocket client disconnected");
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+    use clap::{error::ErrorKind, Parser};
+
+    #[test]
+    fn rejects_conflicting_seed_aliases() {
+        let err = Args::try_parse_from([
+            "simd",
+            "--seed-file",
+            "seed.json",
+            "--seed",
+            "1",
+            "--world-seed",
+            "2",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn rejects_procedural_without_height() {
+        let err = Args::try_parse_from(["simd", "--seed", "4", "--width", "64"]).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn rejects_width_with_seed_file() {
+        let err = Args::try_parse_from(["simd", "--seed-file", "seed.json", "--width", "64"])
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
     }
 }

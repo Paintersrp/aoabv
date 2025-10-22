@@ -21,10 +21,10 @@ test:
 check: fmt clippy build test
 
 simd:
-	$(CARGO) run -p simd -- --seed $(SIMSTEP_SEED) --port 8787
+	$(CARGO) run -p simd -- --seed-file $(SIMSTEP_SEED) --port 8787
 
 simstep:
-	$(CARGO) run -p simstep -- --seed $(SIMSTEP_SEED) --ticks $(SIMSTEP_TICKS) --out $(SIMSTEP_OUT)
+	$(CARGO) run -p simstep -- --seed-file $(SIMSTEP_SEED) --ticks $(SIMSTEP_TICKS) --out $(SIMSTEP_OUT)
 
 golden: simstep
 	diff -u $(SIMSTEP_OUT) $(GOLDEN)
