@@ -14,15 +14,18 @@ The viewer (Godot 4.5) will connect to the daemon and consume the `sim_core` fra
 2. Fetch dependencies and build:
    ```bash
    cargo build -p simd -p simstep
+   # or: make build
    ```
 3. Run the batch runner to reproduce the golden fixtures:
    ```bash
    cargo run -p simstep -- --seed ./testdata/seeds/wet_equator.json --ticks 8 --out ./target/tmp.ndjson
    diff -u ./target/tmp.ndjson ./testdata/golden/wet_equator_8ticks.ndjson
+   # or: make golden
    ```
 4. Start the streaming daemon:
    ```bash
    cargo run -p simd -- --seed ./testdata/seeds/wet_equator.json --port 8080
+   # or: make simd
    ```
    The daemon serves a WebSocket endpoint at `ws://localhost:8080/stream`. Each message is a single NDJSON line conforming to §3 of `AGENTS.md`.
 
@@ -46,7 +49,7 @@ All kernels derive deterministic substreams from the world seed, tick, and stage
 
 ## Contributing
 
-* Run `cargo fmt`, `cargo clippy -D warnings`, and `cargo test -p sim_core` before sending a PR.
+* Run `cargo fmt`, `cargo clippy -D warnings`, and `cargo test -p sim_core` (or simply `make check`) before sending a PR.
 * Update `/docs/systems_contract.md` and `/docs/cause_codes.md` when changing the wire schema or cause list.
 * Include a brief change note in commit messages when regenerating golden files.
 
