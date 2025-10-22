@@ -6,7 +6,6 @@ use crate::world::{Region, World};
 
 pub struct ClimateOutput {
     pub diff: Diff,
-    pub causes: Vec<Cause>,
     pub highlights: Vec<Highlight>,
     pub chronicle: Vec<String>,
 }
@@ -96,7 +95,6 @@ fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
 
 pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
     let mut diff = Diff::default();
-    let mut causes = Vec::new();
     let highlights = Vec::new();
     let mut chronicle = Vec::new();
 
@@ -110,12 +108,12 @@ pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
             diff.record_biome(region.index(), biome);
             chronicle.push(format!("Region {} shifted biome to {}", region.id, biome));
         }
-        causes.push(Cause::new(
+        diff.record_cause(Cause::new(
             format!("region:{}/biome", region.id),
             "latitude_belt",
             Some(format!("{}", belt.label())),
         ));
-        causes.push(Cause::new(
+        diff.record_cause(Cause::new(
             format!("region:{}/biome", region.id),
             "seasonality_variance",
             Some(format!("{:.3}", seasonal_shift)),
@@ -124,7 +122,6 @@ pub fn run(world: &World, rng: &mut StageRng) -> ClimateOutput {
 
     ClimateOutput {
         diff,
-        causes,
         highlights,
         chronicle,
     }
