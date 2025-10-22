@@ -40,7 +40,7 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
 ```
 
 * `freq` influences the pseudo-noise frequency (currently informational only but preserved for forward compatibility).
-* Repository fixtures `run_seed_wet_equator.json` and `world_seed_wet_equator.json` follow this schema.
+* Repository fixtures `seed_wet_equator.json` and `seed_shard_continents.json` follow this schema.
 * The realised world stores `tick`, `seed`, `width`, `height`, and a `regions` array containing deterministic coordinates and climate state.
 
 ## Cause log schema

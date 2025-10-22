@@ -1,0 +1,7 @@
+{
+  "name": "shard_continents",
+  "width": 96,
+  "height": 48,
+  "elevation_noise": {"octaves": 4, "freq": 0.012, "amp": 1.1, "seed": 42424242},
+  "humidity_bias": {"equator": 0.1, "poles": -0.35}
+}

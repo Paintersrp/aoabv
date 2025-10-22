@@ -5,7 +5,7 @@
 * Deterministic climate belts → biome classification.
 * Ecology kernel nudges water/soil toward biome targets and emits drought/flood highlights.
 * NDJSON streaming (`simd`) and batch runner (`simstep`).
-* Golden run for `run_seed_wet_equator` checked in under `testdata/golden`.
+* Golden run for `seed_wet_equator` checked in under `testdata/golden`.
 
 ## v0.1 — Evolution scaffolding
 

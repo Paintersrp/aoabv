@@ -130,3 +130,22 @@ fn initial_resources(
     );
     (water, soil)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn repository_seeds_deserialize() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let seeds_dir = manifest_dir.join("../../testdata/seeds");
+        for name in ["seed_wet_equator.json", "seed_shard_continents.json"] {
+            let path = seeds_dir.join(name);
+            let seed = Seed::load_from_path(&path)
+                .unwrap_or_else(|err| panic!("failed to load {:?}: {}", path, err));
+            assert!(seed.width > 0, "seed {:?} must define width", path);
+            assert!(seed.height > 0, "seed {:?} must define height", path);
+        }
+    }
+}
