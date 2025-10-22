@@ -1,0 +1,7 @@
+{
+  "name": "wet_equator",
+  "width": 64,
+  "height": 32,
+  "elevation_noise": {"octaves": 3, "freq": 0.015, "amp": 1.0, "seed": 987654321},
+  "humidity_bias": {"equator": 0.3, "poles": -0.2}
+}

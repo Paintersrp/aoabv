@@ -27,7 +27,7 @@ cargo build -p simd -p simstep
 ### Run the streaming daemon (`simd`)
 
 ```bash
-cargo run -p simd -- --seed-file ./testdata/seeds/run_seed_wet_equator.json --port 8080
+cargo run -p simd -- --seed-file ./testdata/seeds/seed_wet_equator.json --port 8080
 # or: make simd
 ```
 
@@ -37,10 +37,10 @@ The daemon exposes a WebSocket endpoint at `ws://localhost:8080/stream`, emittin
 
 ```bash
 cargo run -p simstep -- \
-  --seed-file ./testdata/seeds/run_seed_wet_equator.json \
+  --seed-file ./testdata/seeds/seed_wet_equator.json \
   --ticks 120 \
   --out ./target/tmp.ndjson
-diff -u ./target/tmp.ndjson ./testdata/golden/run_seed_wet_equator.ndjson
+diff -u ./target/tmp.ndjson ./testdata/golden/seed_wet_equator.ndjson
 # or: make golden
 ```
 
@@ -57,7 +57,7 @@ With the daemon running, select the main scene (`Main.tscn`) and press **Play** 
 
 ## Assumptions & scope
 
-* Seeds in [`/testdata/seeds`](testdata/seeds/) describe world dimensions and generator parameters for climate/ecology kernels. Default fixtures include `run_seed_wet_equator.json` for golden runs and `world_seed_wet_equator.json` for broader worldgen experiments.
+* Seeds in [`/testdata/seeds`](testdata/seeds/) describe world dimensions and generator parameters for climate/ecology kernels. Default fixtures include `seed_wet_equator.json` for golden runs and `seed_shard_continents.json` for broader worldgen experiments.
 * Golden NDJSON outputs in [`/testdata/golden`](testdata/golden/) are authoritative references for regression testing.
 * The viewer is observational only in v0.0—no gameplay UI or input loops beyond connecting to the stream.
 
