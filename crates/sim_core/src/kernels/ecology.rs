@@ -1,6 +1,6 @@
 use crate::cause::{Code, Entry};
 use crate::diff::{Diff, Highlight};
-use crate::fixed::{apply_resource_delta, resource_ratio, RESOURCE_MAX};
+use crate::fixed::{clamp_u16, resource_ratio, SOIL_MAX, WATER_MAX};
 use crate::rng::StageRng;
 use crate::world::World;
 
@@ -52,8 +52,8 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
     for region in &world.regions {
         let mut region_rng = rng.fork_region(region.index());
         let profile = profile_for_biome(region.biome);
-        let water_ratio = resource_ratio(region.water);
-        let soil_ratio = resource_ratio(region.soil);
+        let water_ratio = resource_ratio(region.water, WATER_MAX);
+        let soil_ratio = resource_ratio(region.soil, SOIL_MAX);
 
         let water_drift = ((profile.water_target - water_ratio) * 200.0).round() as i32;
         let soil_drift = ((profile.soil_target - soil_ratio) * 150.0).round() as i32;
@@ -74,11 +74,11 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
             diff.record_soil_delta(region.index(), soil_delta);
         }
 
-        let new_water = apply_resource_delta(region.water, water_delta);
-        let new_soil = apply_resource_delta(region.soil, soil_delta);
+        let new_water = clamp_u16(region.water as i32 + water_delta, 0, WATER_MAX);
+        let new_soil = clamp_u16(region.soil as i32 + soil_delta, 0, SOIL_MAX);
 
-        let drought_level = RESOURCE_MAX.saturating_sub(new_water);
-        let flood_level = new_water.saturating_sub(RESOURCE_MAX - 1_500);
+        let drought_level = WATER_MAX.saturating_sub(new_water);
+        let flood_level = new_water.saturating_sub(WATER_MAX - 1_500);
         if drought_level != region.hazards.drought || flood_level != region.hazards.flood {
             diff.record_hazard(region.index(), drought_level, flood_level);
         }
@@ -87,7 +87,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
             highlights.push(Highlight::hazard(
                 region.id,
                 "drought",
-                drought_level as f32 / RESOURCE_MAX as f32,
+                drought_level as f32 / WATER_MAX as f32,
             ));
             chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
             diff.record_cause(Entry::new(
@@ -99,7 +99,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
             highlights.push(Highlight::hazard(
                 region.id,
                 "flood",
-                flood_level as f32 / RESOURCE_MAX as f32,
+                flood_level as f32 / WATER_MAX as f32,
             ));
             chronicle.push(format!("Region {} endures seasonal floods.", region.id));
             diff.record_cause(Entry::new(
@@ -163,8 +163,8 @@ mod tests {
     proptest! {
         #[test]
         fn ecology_diff_keeps_resources_within_bounds(
-            water in 0u16..=RESOURCE_MAX,
-            soil in 0u16..=RESOURCE_MAX,
+            water in 0u16..=WATER_MAX,
+            soil in 0u16..=SOIL_MAX,
             biome in 0u8..=5
         ) {
             use crate::world::{Hazards, Region, World};
@@ -198,12 +198,12 @@ mod tests {
                 .first()
                 .map(|delta| delta.delta)
                 .unwrap_or(0);
-            let next_water = apply_resource_delta(water, water_delta);
-            let next_soil = apply_resource_delta(soil, soil_delta);
-            prop_assert!(next_water <= RESOURCE_MAX);
-            prop_assert!(next_soil <= RESOURCE_MAX);
-            prop_assert!(next_water >= 0);
-            prop_assert!(next_soil >= 0);
+            let next_water = clamp_u16(water as i32 + water_delta, 0, WATER_MAX);
+            let next_soil = clamp_u16(soil as i32 + soil_delta, 0, SOIL_MAX);
+            prop_assert!(next_water <= WATER_MAX);
+            prop_assert!(next_soil <= SOIL_MAX);
+            prop_assert!(i32::from(next_water) >= 0);
+            prop_assert!(i32::from(next_soil) >= 0);
         }
     }
 }

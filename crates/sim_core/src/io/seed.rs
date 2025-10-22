@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use crate::fixed::clamp_resource;
+use crate::fixed::{clamp_u16, SOIL_MAX, WATER_MAX};
 use crate::rng::SplitMix64;
 use crate::world::{Hazards, Region, World};
 
@@ -113,11 +113,17 @@ fn initial_resources(
     let base = (0.55 + bias).clamp(0.05, 0.95);
     let elevation_penalty = (f64::from(elevation_m) / 3_000.0).clamp(0.0, 1.0) * 0.3;
     let noise = rng.next_signed_unit() * 0.05;
-    let water = clamp_resource(((base - elevation_penalty + noise) * 10_000.0).round() as i32);
+    let water = clamp_u16(
+        ((base - elevation_penalty + noise) * 10_000.0).round() as i32,
+        0,
+        WATER_MAX,
+    );
     let soil_base = (base - 0.1).clamp(0.05, 0.9);
     let soil_noise = rng.next_signed_unit() * 0.04;
-    let soil = clamp_resource(
+    let soil = clamp_u16(
         ((soil_base - elevation_penalty * 0.5 + soil_noise) * 10_000.0).round() as i32,
+        0,
+        SOIL_MAX,
     );
     (water, soil)
 }
