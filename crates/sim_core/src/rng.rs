@@ -1,110 +1,103 @@
-/// Deterministic SplitMix64 RNG implementation providing reproducible substreams.
+//! Deterministic random stream utilities.
+//!
+//! Each [`Stream`] instance represents an independent pseudo-random sequence
+//! derived from the simulation seed, a logical stage label, and the current
+//! tick. Substreams can be derived deterministically without mutating the
+//! parent stream, which allows kernels to spawn region-level RNGs while
+//! preserving reproducibility.
+
 #[derive(Clone, Debug)]
-pub struct SplitMix64 {
-    state: u64,
+pub struct Stream {
+    /// Upper 64 bits store the logical stream id; lower 64 bits store the
+    /// rolling counter for splitmix-style generation.
+    state: u128,
 }
 
-impl SplitMix64 {
-    pub fn new(seed: u64) -> Self {
-        Self { state: seed }
+impl Stream {
+    /// Construct a stream for the given `(seed, stage, tick)` triple.
+    pub fn from(seed: u64, stage: &str, tick: u64) -> Self {
+        let stage_hash = fnv1a64(stage.as_bytes());
+        let mut stream_id = seed
+            .wrapping_mul(0xA0761D6478BD642F)
+            .wrapping_add(0xE7037ED1A0B428DB)
+            ^ tick.wrapping_mul(0x8E9D5A8F6A09E667)
+            ^ stage_hash;
+        stream_id = mix64(stream_id);
+        let counter = mix64(stream_id ^ 0xD1342543DE82EF95);
+        Self {
+            state: (u128::from(stream_id) << 64) | u128::from(counter),
+        }
     }
 
+    /// Deterministically derive a child stream identified by `label`.
+    pub fn derive(&self, label: u64) -> Self {
+        let parent_id = (self.state >> 64) as u64;
+        let derived = mix64(parent_id ^ mix64(label ^ 0x94D049BB133111EB));
+        let counter = mix64(derived ^ 0xBF58476D1CE4E5B9);
+        Self {
+            state: (u128::from(derived) << 64) | u128::from(counter),
+        }
+    }
+
+    /// Advance the stream and return the next `u64` sample.
     pub fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_add(0x9E3779B97F4A7C15);
-        let mut z = self.state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
-        z ^ (z >> 31)
+        let stream_id = (self.state >> 64) as u64;
+        let mut counter = self.state as u64;
+        counter = counter.wrapping_add(0x9E3779B97F4A7C15);
+        self.state = (u128::from(stream_id) << 64) | u128::from(counter);
+        mix64(stream_id ^ counter)
     }
 
+    /// Advance the stream and return the next `f32` sample in `[0, 1)`.
+    pub fn next_f32(&mut self) -> f32 {
+        const SCALE: f32 = (1u32 << 24) as f32;
+        ((self.next_u64() >> 40) as f32) / SCALE
+    }
+
+    /// Advance the stream and return the next `f64` sample in `[0, 1)`.
     pub fn next_f64(&mut self) -> f64 {
         const SCALE: f64 = (1u64 << 53) as f64;
         ((self.next_u64() >> 11) as f64) / SCALE
     }
 
+    /// Advance the stream and return the next `f64` sample in `[-1, 1)`.
     pub fn next_signed_unit(&mut self) -> f64 {
         self.next_f64() * 2.0 - 1.0
     }
 }
 
-/// Project-level RNG that can spawn deterministic stage substreams.
-#[derive(Clone, Debug)]
-pub struct ProjectRng {
-    seed: u64,
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    for &b in bytes {
+        hash ^= u64::from(b);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }
 
-impl ProjectRng {
-    pub fn new(seed: u64) -> Self {
-        Self { seed }
-    }
-
-    pub fn stage(&self, stage: Stage, tick: u64) -> StageRng {
-        let mut mix = SplitMix64::new(self.seed ^ stage.id());
-        mix.state ^= tick;
-        StageRng {
-            stream: mix,
-            counter: 0,
-        }
-    }
+fn mix64(mut z: u64) -> u64 {
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^ (z >> 31)
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum Stage {
-    Climate,
-    Ecology,
-}
+#[cfg(test)]
+mod tests {
+    use super::Stream;
 
-impl Stage {
-    fn id(self) -> u64 {
-        match self {
-            Stage::Climate => 0xC1_1A7E_u64,
-            Stage::Ecology => 0xEC_0810_u64,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct StageRng {
-    stream: SplitMix64,
-    counter: u64,
-}
-
-impl StageRng {
-    pub fn next_f64(&mut self) -> f64 {
-        self.counter += 1;
-        self.stream.next_f64()
+    #[test]
+    fn derive_is_deterministic() {
+        let base = Stream::from(42, "stage", 7);
+        let mut derived_a = base.derive(5);
+        let mut derived_b = base.derive(5);
+        assert_eq!(derived_a.next_u64(), derived_b.next_u64());
+        assert_eq!(derived_a.next_f64(), derived_b.next_f64());
     }
 
-    pub fn next_signed_unit(&mut self) -> f64 {
-        self.counter += 1;
-        self.stream.next_signed_unit()
-    }
-
-    pub fn fork_region(&self, region_index: usize) -> RegionRng {
-        let seed = self.stream.clone();
-        let mut mix = SplitMix64::new(seed.state ^ (region_index as u64 + 0x9E37));
-        mix.state = mix.next_u64();
-        RegionRng {
-            stream: mix,
-            counter: 0,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RegionRng {
-    stream: SplitMix64,
-    counter: u64,
-}
-
-impl RegionRng {
-    pub fn next_f64(&mut self) -> f64 {
-        self.counter += 1;
-        self.stream.next_f64()
-    }
-
-    pub fn next_signed_unit(&mut self) -> f64 {
-        self.counter += 1;
-        self.stream.next_signed_unit()
+    #[test]
+    fn stage_changes_stream() {
+        let mut climate = Stream::from(1, "climate", 10);
+        let mut ecology = Stream::from(1, "ecology", 10);
+        assert_ne!(climate.next_u64(), ecology.next_u64());
     }
 }

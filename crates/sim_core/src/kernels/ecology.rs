@@ -1,8 +1,10 @@
 use crate::cause::{Code, Entry};
 use crate::diff::{Diff, Highlight};
 use crate::fixed::{clamp_u16, resource_ratio, SOIL_MAX, WATER_MAX};
-use crate::rng::StageRng;
+use crate::rng::Stream;
 use crate::world::World;
+
+pub const STAGE: &str = "kernel:ecology";
 
 pub struct EcologyOutput {
     pub diff: Diff,
@@ -44,13 +46,13 @@ fn profile_for_biome(biome: u8) -> BiomeProfile {
     }
 }
 
-pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
+pub fn run(world: &World, rng: &mut Stream) -> EcologyOutput {
     let mut diff = Diff::default();
     let mut highlights = Vec::new();
     let mut chronicle = Vec::new();
 
     for region in &world.regions {
-        let mut region_rng = rng.fork_region(region.index());
+        let mut region_rng = rng.derive(region.index() as u64);
         let profile = profile_for_biome(region.biome);
         let water_ratio = resource_ratio(region.water, WATER_MAX);
         let soil_ratio = resource_ratio(region.soil, SOIL_MAX);
@@ -128,7 +130,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rng::ProjectRng;
+    use crate::rng::Stream;
     use proptest::prelude::*;
 
     #[test]
@@ -149,7 +151,7 @@ mod tests {
                 hazards: crate::world::Hazards::default(),
             }],
         );
-        let mut rng = ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
+        let mut rng = Stream::from(world.seed, STAGE, 1);
         let output = run(&world, &mut rng);
         let water_delta = output
             .diff
@@ -184,7 +186,7 @@ mod tests {
                     hazards: Hazards::default(),
                 }],
             );
-            let mut rng = crate::rng::ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
+            let mut rng = Stream::from(world.seed, STAGE, 1);
             let output = run(&world, &mut rng);
             let water_delta = output
                 .diff

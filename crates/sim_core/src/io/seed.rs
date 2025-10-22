@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use crate::fixed::{clamp_u16, SOIL_MAX, WATER_MAX};
-use crate::rng::SplitMix64;
+use crate::rng::Stream;
 use crate::world::{Hazards, Region, World};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -88,9 +88,8 @@ fn sample_elevation(seed: u64, noise: &ElevationNoise, x: u32, y: u32) -> i32 {
     let mut amplitude = noise.amp;
     let mut total = 0.0;
     while octave < noise.octaves {
-        let mut rng = SplitMix64::new(
-            seed ^ noise.seed ^ ((x as u64) << 16) ^ ((y as u64) << 32) ^ octave as u64,
-        );
+        let context = ((x as u64) << 32) ^ ((y as u64) << 16) ^ u64::from(octave);
+        let mut rng = Stream::from(seed ^ noise.seed, "seed:elevation", context);
         let sample = rng.next_signed_unit();
         total += sample * amplitude * 500.0;
         amplitude *= 0.5;
@@ -107,19 +106,21 @@ fn initial_resources(
     x: u32,
     y: u32,
 ) -> (u16, u16) {
-    let mut rng = SplitMix64::new(seed ^ ((x as u64) << 12) ^ ((y as u64) << 20));
+    let context = ((x as u64) << 32) ^ ((y as u64) << 16);
+    let mut water_rng = Stream::from(seed, "seed:resources:water", context);
+    let mut soil_rng = Stream::from(seed, "seed:resources:soil", context);
     let latitude_ratio = (latitude_deg.abs() / 90.0).clamp(0.0, 1.0);
     let bias = humidity.equator + (humidity.poles - humidity.equator) * latitude_ratio;
     let base = (0.55 + bias).clamp(0.05, 0.95);
     let elevation_penalty = (f64::from(elevation_m) / 3_000.0).clamp(0.0, 1.0) * 0.3;
-    let noise = rng.next_signed_unit() * 0.05;
+    let noise = water_rng.next_signed_unit() * 0.05;
     let water = clamp_u16(
         ((base - elevation_penalty + noise) * 10_000.0).round() as i32,
         0,
         WATER_MAX,
     );
     let soil_base = (base - 0.1).clamp(0.05, 0.9);
-    let soil_noise = rng.next_signed_unit() * 0.04;
+    let soil_noise = soil_rng.next_signed_unit() * 0.04;
     let soil = clamp_u16(
         ((soil_base - elevation_penalty * 0.5 + soil_noise) * 10_000.0).round() as i32,
         0,

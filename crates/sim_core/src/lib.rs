@@ -14,7 +14,7 @@ use io::frame::Frame;
 use io::seed::{SeedDocument, SeedRealization};
 use kernels::{climate, ecology};
 use reduce::apply_diff;
-use rng::{ProjectRng, Stage};
+use rng::Stream;
 use world::World;
 
 /// Result of a single simulation tick.
@@ -25,7 +25,6 @@ pub struct TickOutputs {
 
 /// Deterministic simulation harness that owns the mutable [`World`].
 pub struct Simulation {
-    rng: ProjectRng,
     world: World,
 }
 
@@ -38,9 +37,7 @@ impl Simulation {
 
     /// Construct the simulation from a realised seed.
     pub fn new(realization: SeedRealization) -> Self {
-        let rng = ProjectRng::new(realization.world.seed);
         Self {
-            rng,
             world: realization.world,
         }
     }
@@ -59,7 +56,7 @@ impl Simulation {
         let mut chronicle = Vec::new();
 
         // Climate kernel.
-        let mut climate_rng = self.rng.stage(Stage::Climate, next_tick);
+        let mut climate_rng = Stream::from(self.world.seed, climate::STAGE, next_tick);
         let climate_output = climate::run(&self.world, &mut climate_rng);
         apply_diff(&mut self.world, &climate_output.diff);
         aggregate_diff.merge(&climate_output.diff);
@@ -67,7 +64,7 @@ impl Simulation {
         chronicle.extend(climate_output.chronicle.into_iter());
 
         // Ecology kernel uses the climate-updated world state.
-        let mut ecology_rng = self.rng.stage(Stage::Ecology, next_tick);
+        let mut ecology_rng = Stream::from(self.world.seed, ecology::STAGE, next_tick);
         let ecology_output = ecology::run(&self.world, &mut ecology_rng);
         apply_diff(&mut self.world, &ecology_output.diff);
         aggregate_diff.merge(&ecology_output.diff);
