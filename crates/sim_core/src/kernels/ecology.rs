@@ -62,7 +62,8 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
         let noise = (region_rng.next_signed_unit() * 25.0) as i32;
 
         let water_delta = (water_drift + noise).clamp(-180, 180);
-        let soil_delta = (soil_drift + noise / 2).clamp(-120, 120);
+        let noise_half = if noise >= 0 { noise / 2 } else { (noise - 1) / 2 };
+        let soil_delta = (soil_drift + noise_half).clamp(-120, 120);
 
         if water_delta != 0 {
             diff.record_water_delta(region.index(), water_delta);
