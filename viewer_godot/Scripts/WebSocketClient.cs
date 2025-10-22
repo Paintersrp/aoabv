@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 public partial class WebSocketClient : Node
 {
-    private const string StreamUrl = "ws://127.0.0.1:7777/stream";
+    private const string StreamUrl = "ws://127.0.0.1:8787/stream";
     private const int FrameBufferSize = 120;
 
     private readonly WebSocketPeer _peer = new();

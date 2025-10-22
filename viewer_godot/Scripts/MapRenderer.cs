@@ -159,7 +159,7 @@ public partial class MapRenderer : Node2D
         (_width, _height) = DeriveDimensions(regionCount);
         var pixelWidth = Math.Max(_width * TileSize, TileSize);
         var pixelHeight = Math.Max(_height * TileSize, TileSize);
-        _image = Image.Create(pixelWidth, pixelHeight, false, Image.Format.Rgba8);
+        _image = Image.CreateEmpty(pixelWidth, pixelHeight, false, Image.Format.Rgba8);
         _image.Fill(DefaultColor);
 
         for (var index = 0; index < _biomes.Length; index++)
