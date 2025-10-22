@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
         .parse()
         .with_context(|| format!("invalid bind address {}:{}", args.bind, args.port))?;
 
-    info!("starting simd", %addr);
+    info!(%addr, "starting simd");
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
