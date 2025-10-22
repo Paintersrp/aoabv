@@ -6,7 +6,6 @@ use crate::world::World;
 
 pub struct EcologyOutput {
     pub diff: Diff,
-    pub causes: Vec<Cause>,
     pub highlights: Vec<Highlight>,
     pub chronicle: Vec<String>,
 }
@@ -47,7 +46,6 @@ fn profile_for_biome(biome: u8) -> BiomeProfile {
 
 pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
     let mut diff = Diff::default();
-    let mut causes = Vec::new();
     let mut highlights = Vec::new();
     let mut chronicle = Vec::new();
 
@@ -92,7 +90,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
                 drought_level as f32 / RESOURCE_MAX as f32,
             ));
             chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
-            causes.push(Cause::new(
+            diff.record_cause(Cause::new(
                 format!("region:{}/water", region.id),
                 "drought_flag",
                 Some(format!("level={}", drought_level)),
@@ -104,7 +102,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
                 flood_level as f32 / RESOURCE_MAX as f32,
             ));
             chronicle.push(format!("Region {} endures seasonal floods.", region.id));
-            causes.push(Cause::new(
+            diff.record_cause(Cause::new(
                 format!("region:{}/water", region.id),
                 "flood_flag",
                 Some(format!("level={}", flood_level)),
@@ -112,7 +110,7 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
         }
 
         if new_soil < 2_500 {
-            causes.push(Cause::new(
+            diff.record_cause(Cause::new(
                 format!("region:{}/soil", region.id),
                 "soil_fertility_low",
                 Some(format!("value={}", new_soil)),
@@ -122,7 +120,6 @@ pub fn run(world: &World, rng: &mut StageRng) -> EcologyOutput {
 
     EcologyOutput {
         diff,
-        causes,
         highlights,
         chronicle,
     }
@@ -154,13 +151,13 @@ mod tests {
         );
         let mut rng = ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
         let output = run(&world, &mut rng);
-        assert!(output
+        let water_delta = output
             .diff
             .water
-            .values()
-            .next()
-            .unwrap_or(&0)
-            .is_positive());
+            .first()
+            .map(|delta| delta.delta)
+            .unwrap_or(0);
+        assert!(water_delta.is_positive());
     }
 
     proptest! {
@@ -189,8 +186,18 @@ mod tests {
             );
             let mut rng = crate::rng::ProjectRng::new(world.seed).stage(crate::rng::Stage::Ecology, 1);
             let output = run(&world, &mut rng);
-            let water_delta = output.diff.water.values().next().copied().unwrap_or(0);
-            let soil_delta = output.diff.soil.values().next().copied().unwrap_or(0);
+            let water_delta = output
+                .diff
+                .water
+                .first()
+                .map(|delta| delta.delta)
+                .unwrap_or(0);
+            let soil_delta = output
+                .diff
+                .soil
+                .first()
+                .map(|delta| delta.delta)
+                .unwrap_or(0);
             let next_water = apply_resource_delta(water, water_delta);
             let next_soil = apply_resource_delta(soil, soil_delta);
             prop_assert!(next_water <= RESOURCE_MAX);

@@ -57,32 +57,32 @@ impl Simulation {
         let mut aggregate_diff = Diff::default();
         let mut highlights = Vec::new();
         let mut chronicle = Vec::new();
-        let mut causes = Vec::new();
 
         // Climate kernel.
         let mut climate_rng = self.rng.stage(Stage::Climate, next_tick);
         let climate_output = climate::run(&self.world, &mut climate_rng);
         apply_diff(&mut self.world, &climate_output.diff);
         aggregate_diff.merge(&climate_output.diff);
-        highlights.extend(climate_output.highlights);
-        chronicle.extend(climate_output.chronicle);
-        causes.extend(climate_output.causes);
+        highlights.extend(climate_output.highlights.into_iter());
+        chronicle.extend(climate_output.chronicle.into_iter());
 
         // Ecology kernel uses the climate-updated world state.
         let mut ecology_rng = self.rng.stage(Stage::Ecology, next_tick);
         let ecology_output = ecology::run(&self.world, &mut ecology_rng);
         apply_diff(&mut self.world, &ecology_output.diff);
         aggregate_diff.merge(&ecology_output.diff);
-        highlights.extend(ecology_output.highlights);
-        chronicle.extend(ecology_output.chronicle);
-        causes.extend(ecology_output.causes);
+        highlights.extend(ecology_output.highlights.into_iter());
+        chronicle.extend(ecology_output.chronicle.into_iter());
 
         self.world.tick = next_tick;
+
+        let mut diff_for_frame = aggregate_diff;
+        let causes = diff_for_frame.take_causes();
 
         TickOutputs {
             frame: Frame {
                 t: next_tick,
-                diff: aggregate_diff,
+                diff: diff_for_frame,
                 highlights,
                 chronicle,
                 era_end: false,
