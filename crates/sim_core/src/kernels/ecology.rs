@@ -1,16 +1,11 @@
 use crate::cause::{Code, Entry};
-use crate::diff::{Diff, Highlight};
+use crate::diff::Diff;
 use crate::fixed::{clamp_u16, resource_ratio, SOIL_MAX, WATER_MAX};
 use crate::rng::Stream;
 use crate::world::World;
+use anyhow::{ensure, Result};
 
 pub const STAGE: &str = "kernel:ecology";
-
-pub struct EcologyOutput {
-    pub diff: Diff,
-    pub highlights: Vec<Highlight>,
-    pub chronicle: Vec<String>,
-}
 
 struct BiomeProfile {
     water_target: f64,
@@ -46,12 +41,30 @@ fn profile_for_biome(biome: u8) -> BiomeProfile {
     }
 }
 
-pub fn run(world: &World, rng: &mut Stream) -> EcologyOutput {
+pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
     let mut diff = Diff::default();
-    let mut highlights = Vec::new();
-    let mut chronicle = Vec::new();
 
-    for region in &world.regions {
+    for (index, region) in world.regions.iter().enumerate() {
+        ensure!(
+            region.index() == index,
+            "region id {} does not match index {}",
+            region.id,
+            index
+        );
+        ensure!(
+            region.water <= WATER_MAX,
+            "region {} water {} exceeds WATER_MAX {}",
+            region.id,
+            region.water,
+            WATER_MAX
+        );
+        ensure!(
+            region.soil <= SOIL_MAX,
+            "region {} soil {} exceeds SOIL_MAX {}",
+            region.id,
+            region.soil,
+            SOIL_MAX
+        );
         let mut region_rng = rng.derive(region.index() as u64);
         let profile = profile_for_biome(region.biome);
         let water_ratio = resource_ratio(region.water, WATER_MAX);
@@ -86,24 +99,12 @@ pub fn run(world: &World, rng: &mut Stream) -> EcologyOutput {
         }
 
         if drought_level > 3_000 {
-            highlights.push(Highlight::hazard(
-                region.id,
-                "drought",
-                drought_level as f32 / WATER_MAX as f32,
-            ));
-            chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
             diff.record_cause(Entry::new(
                 format!("region:{}/water", region.id),
                 Code::DroughtFlag,
                 Some(format!("level={}", drought_level)),
             ));
         } else if flood_level > 1_000 {
-            highlights.push(Highlight::hazard(
-                region.id,
-                "flood",
-                flood_level as f32 / WATER_MAX as f32,
-            ));
-            chronicle.push(format!("Region {} endures seasonal floods.", region.id));
             diff.record_cause(Entry::new(
                 format!("region:{}/water", region.id),
                 Code::FloodFlag,
@@ -120,11 +121,7 @@ pub fn run(world: &World, rng: &mut Stream) -> EcologyOutput {
         }
     }
 
-    EcologyOutput {
-        diff,
-        highlights,
-        chronicle,
-    }
+    Ok(diff)
 }
 
 #[cfg(test)]
@@ -152,13 +149,8 @@ mod tests {
             }],
         );
         let mut rng = Stream::from(world.seed, STAGE, 1);
-        let output = run(&world, &mut rng);
-        let water_delta = output
-            .diff
-            .water
-            .first()
-            .map(|delta| delta.delta)
-            .unwrap_or(0);
+        let diff = update(&world, &mut rng).unwrap();
+        let water_delta = diff.water.first().map(|delta| delta.delta).unwrap_or(0);
         assert!(water_delta.is_positive());
     }
 
@@ -187,15 +179,13 @@ mod tests {
                 }],
             );
             let mut rng = Stream::from(world.seed, STAGE, 1);
-            let output = run(&world, &mut rng);
-            let water_delta = output
-                .diff
+            let diff = update(&world, &mut rng).unwrap();
+            let water_delta = diff
                 .water
                 .first()
                 .map(|delta| delta.delta)
                 .unwrap_or(0);
-            let soil_delta = output
-                .diff
+            let soil_delta = diff
                 .soil
                 .first()
                 .map(|delta| delta.delta)

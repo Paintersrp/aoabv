@@ -1,16 +1,11 @@
 use crate::cause::{Code, Entry};
-use crate::diff::{Diff, Highlight};
+use crate::diff::Diff;
 use crate::fixed::{resource_ratio, WATER_MAX};
 use crate::rng::Stream;
 use crate::world::{Region, World};
+use anyhow::{ensure, Result};
 
 pub const STAGE: &str = "kernel:climate";
-
-pub struct ClimateOutput {
-    pub diff: Diff,
-    pub highlights: Vec<Highlight>,
-    pub chronicle: Vec<String>,
-}
 
 enum LatitudeBelt {
     Equatorial,
@@ -94,13 +89,16 @@ fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
     let baseline = 1.0 - moisture;
     (baseline * 0.6 + elevation * 0.3 + seasonal_shift * 0.1).clamp(0.0, 1.0)
 }
-
-pub fn run(world: &World, rng: &mut Stream) -> ClimateOutput {
+pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
     let mut diff = Diff::default();
-    let highlights = Vec::new();
-    let mut chronicle = Vec::new();
 
-    for region in &world.regions {
+    for (index, region) in world.regions.iter().enumerate() {
+        ensure!(
+            region.index() == index,
+            "region id {} does not match index {}",
+            region.id,
+            index
+        );
         let belt = LatitudeBelt::from_latitude(region.latitude_deg);
         let mut region_rng = rng.derive(region.index() as u64);
         let seasonal_shift = region_rng.next_signed_unit();
@@ -108,7 +106,6 @@ pub fn run(world: &World, rng: &mut Stream) -> ClimateOutput {
         let biome = classify_biome(&belt, dryness);
         if biome != region.biome {
             diff.record_biome(region.index(), biome);
-            chronicle.push(format!("Region {} shifted biome to {}", region.id, biome));
         }
         diff.record_cause(Entry::new(
             format!("region:{}/biome", region.id),
@@ -122,11 +119,7 @@ pub fn run(world: &World, rng: &mut Stream) -> ClimateOutput {
         ));
     }
 
-    ClimateOutput {
-        diff,
-        highlights,
-        chronicle,
-    }
+    Ok(diff)
 }
 
 #[cfg(test)]
@@ -152,7 +145,7 @@ mod tests {
             .collect();
         let world = World::new(11, 5, 1, regions);
         let mut rng = Stream::from(world.seed, STAGE, 1);
-        let output = run(&world, &mut rng);
-        assert!(output.diff.biome.len() >= 3);
+        let diff = update(&world, &mut rng).unwrap();
+        assert!(diff.biome.len() >= 3);
     }
 }

@@ -70,8 +70,16 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         loop {
             let mut guard = tick_handle.lock().await;
-            let outputs = guard.tick();
+            let tick_result = guard.tick();
             drop(guard);
+
+            let outputs = match tick_result {
+                Ok(outputs) => outputs,
+                Err(err) => {
+                    error!(?err, "tick failed");
+                    break;
+                }
+            };
 
             if let Ok(line) = outputs.frame.to_ndjson() {
                 if tick_tx.send(line).is_err() {
