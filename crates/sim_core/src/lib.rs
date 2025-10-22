@@ -7,120 +7,92 @@ pub mod reduce;
 pub mod rng;
 pub mod world;
 
-use anyhow::Result;
-use cause::Entry;
+use anyhow::{ensure, Result};
 use diff::Diff;
 use fixed::WATER_MAX;
 use io::frame::Highlight;
-use io::seed::{build_world, Seed};
 use kernels::{climate, ecology};
 use reduce::apply;
 use rng::Stream;
 use world::World;
 
-/// Result of a single simulation tick before serialization.
-pub struct TickOutputs {
-    pub t: u64,
-    pub diff: Diff,
-    pub highlights: Vec<Highlight>,
-    pub chronicle: Vec<String>,
-    pub era_end: bool,
-    pub causes: Vec<Entry>,
-}
+/// Execute a single deterministic simulation tick.
+///
+/// This function orchestrates the kernel update order and commits their diffs to the
+/// provided [`World`]. The returned [`Diff`] captures all changes applied during the
+/// tick, while the [`Vec<String>`] contains chronicle notes summarising notable events.
+pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<String>)> {
+    ensure!(
+        tick == world.tick + 1,
+        "tick_once called with out-of-order tick: current={} requested={}",
+        world.tick,
+        tick
+    );
 
-/// Deterministic simulation harness that owns the mutable [`World`].
-pub struct Simulation {
-    world: World,
-}
+    let mut aggregate_diff = Diff::default();
+    let mut chronicle = Vec::new();
 
-impl Simulation {
-    /// Construct the simulation from a parsed seed document and optional world seed override.
-    pub fn from_seed(seed: Seed, world_seed_override: Option<u64>) -> Result<Self> {
-        Ok(Self::from_world(build_world(&seed, world_seed_override)))
+    // Climate kernel.
+    let mut climate_rng = Stream::from(seed, climate::STAGE, tick);
+    let climate_diff = climate::update(world, &mut climate_rng)?;
+    for change in &climate_diff.biome {
+        if let Some(region) = world.regions.get(change.region as usize) {
+            chronicle.push(format!(
+                "Region {} shifted biome to {}",
+                region.id, change.biome
+            ));
+        }
     }
+    aggregate_diff.merge(&climate_diff);
+    apply(world, climate_diff);
 
-    /// Construct the simulation from an already realised [`World`].
-    pub fn from_world(world: World) -> Self {
-        Self { world }
-    }
-
-    /// Access the current world snapshot.
-    pub fn world(&self) -> &World {
-        &self.world
-    }
-
-    /// Run a single deterministic tick, returning the NDJSON frame and causes emitted.
-    pub fn tick(&mut self) -> Result<TickOutputs> {
-        let next_tick = self.world.tick + 1;
-
-        let mut aggregate_diff = Diff::default();
-        let mut highlights = Vec::new();
-        let mut chronicle = Vec::new();
-
-        // Climate kernel.
-        let mut climate_rng = Stream::from(self.world.seed, climate::STAGE, next_tick);
-        let climate_diff = climate::update(&self.world, &mut climate_rng)?;
-        {
-            for change in &climate_diff.biome {
-                if let Some(region) = self.world.regions.get(change.region as usize) {
-                    chronicle.push(format!(
-                        "Region {} shifted biome to {}",
-                        region.id, change.biome
-                    ));
-                }
+    // Ecology kernel uses the climate-updated world state.
+    let mut ecology_rng = Stream::from(seed, ecology::STAGE, tick);
+    let ecology_diff = ecology::update(world, &mut ecology_rng)?;
+    for hazard in &ecology_diff.hazards {
+        if let Some(region) = world.regions.get(hazard.region as usize) {
+            if hazard.drought > 3_000 {
+                chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
+            } else if hazard.flood > 1_000 {
+                chronicle.push(format!("Region {} endures seasonal floods.", region.id));
             }
         }
-        aggregate_diff.merge(&climate_diff);
-        apply(&mut self.world, climate_diff);
+    }
+    aggregate_diff.merge(&ecology_diff);
+    apply(world, ecology_diff);
 
-        // Ecology kernel uses the climate-updated world state.
-        let mut ecology_rng = Stream::from(self.world.seed, ecology::STAGE, next_tick);
-        let ecology_diff = ecology::update(&self.world, &mut ecology_rng)?;
-        {
-            for hazard in &ecology_diff.hazards {
-                if let Some(region) = self.world.regions.get(hazard.region as usize) {
-                    if hazard.drought > 3_000 {
-                        highlights.push(Highlight::hazard(
-                            region.id,
-                            "drought",
-                            hazard.drought as f32 / WATER_MAX as f32,
-                        ));
-                        chronicle
-                            .push(format!("Region {} faces an extended dry spell.", region.id));
-                    } else if hazard.flood > 1_000 {
-                        highlights.push(Highlight::hazard(
-                            region.id,
-                            "flood",
-                            hazard.flood as f32 / WATER_MAX as f32,
-                        ));
-                        chronicle.push(format!("Region {} endures seasonal floods.", region.id));
-                    }
-                }
+    world.tick = tick;
+
+    Ok((aggregate_diff, chronicle))
+}
+
+/// Derive visual highlights for a frame from the applied diff.
+pub fn collect_highlights(world: &World, diff: &Diff) -> Vec<Highlight> {
+    let mut highlights = Vec::new();
+    for hazard in &diff.hazards {
+        if let Some(region) = world.regions.get(hazard.region as usize) {
+            if hazard.drought > 3_000 {
+                highlights.push(Highlight::hazard(
+                    region.id,
+                    "drought",
+                    hazard.drought as f32 / WATER_MAX as f32,
+                ));
+            } else if hazard.flood > 1_000 {
+                highlights.push(Highlight::hazard(
+                    region.id,
+                    "flood",
+                    hazard.flood as f32 / WATER_MAX as f32,
+                ));
             }
         }
-        aggregate_diff.merge(&ecology_diff);
-        apply(&mut self.world, ecology_diff);
-
-        self.world.tick = next_tick;
-
-        let mut diff_for_frame = aggregate_diff;
-        let causes = diff_for_frame.take_causes();
-
-        Ok(TickOutputs {
-            t: next_tick,
-            diff: diff_for_frame,
-            highlights,
-            chronicle,
-            era_end: false,
-            causes,
-        })
     }
+    highlights
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::seed::Seed;
+    use crate::io::seed::{build_world, Seed};
 
     #[test]
     fn tick_advances_world() {
@@ -132,9 +104,11 @@ mod tests {
             "humidity_bias": {"equator": 0.2, "poles": -0.2}
         }"#;
         let seed: Seed = serde_json::from_str(seed_json).unwrap();
-        let mut sim = Simulation::from_seed(seed, Some(777)).unwrap();
-        let prev_tick = sim.world.tick;
-        let _ = sim.tick().unwrap();
-        assert_eq!(sim.world.tick, prev_tick + 1);
+        let mut world = build_world(&seed, Some(777));
+        let prev_tick = world.tick;
+        let next_tick = prev_tick + 1;
+        let seed = world.seed;
+        let (_diff, _chronicle) = tick_once(&mut world, seed, next_tick).unwrap();
+        assert_eq!(world.tick, next_tick);
     }
 }

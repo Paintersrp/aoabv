@@ -10,9 +10,10 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use clap::Parser;
+use sim_core::cause::Entry;
 use sim_core::io::frame::make_frame;
 use sim_core::io::seed::{build_world, Humidity, Noise, Seed};
-use sim_core::Simulation;
+use sim_core::{collect_highlights, tick_once};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
@@ -143,43 +144,45 @@ async fn main() -> Result<()> {
 
     let seed = load_seed(&args)?;
     let world = build_world(&seed, args.world_seed);
-    let simulation = Simulation::from_world(world);
 
     let (tx, _rx) = broadcast::channel::<String>(128);
     let state = AppState { tx: tx.clone() };
-    let sim_handle = Arc::new(Mutex::new(simulation));
+    let world_handle = Arc::new(Mutex::new(world));
 
     // Spawn ticking task.
     let tick_tx = tx.clone();
-    let tick_handle = Arc::clone(&sim_handle);
+    let tick_handle = Arc::clone(&world_handle);
     tokio::spawn(async move {
         loop {
-            let mut guard = tick_handle.lock().await;
-            let tick_result = guard.tick();
-            drop(guard);
+            let tick_result: Result<(String, Vec<Entry>, u64), anyhow::Error> = {
+                let mut world = tick_handle.lock().await;
+                let next_tick = world.tick + 1;
+                let seed = world.seed;
 
-            let outputs = match tick_result {
-                Ok(outputs) => outputs,
+                match tick_once(&mut world, seed, next_tick) {
+                    Ok((diff, chronicle)) => {
+                        let highlights = collect_highlights(&world, &diff);
+                        let causes = diff.causes.clone();
+                        let frame = make_frame(next_tick, diff, highlights, chronicle, false);
+                        match frame.to_ndjson() {
+                            Ok(line) => Ok((line, causes, next_tick)),
+                            Err(err) => Err(err.into()),
+                        }
+                    }
+                    Err(err) => Err(err),
+                }
+            };
+
+            let (line, causes, t) = match tick_result {
+                Ok(result) => result,
                 Err(err) => {
                     error!(?err, "tick failed");
                     break;
                 }
             };
 
-            let sim_core::TickOutputs {
-                t,
-                diff,
-                highlights,
-                chronicle,
-                era_end,
-                causes,
-            } = outputs;
-
-            let frame = make_frame(t, diff, highlights, chronicle, era_end);
-            if let Ok(line) = frame.to_ndjson() {
-                if tick_tx.send(line).is_err() {
-                    tracing::trace!("no subscribers for frame t={}", t);
-                }
+            if tick_tx.send(line).is_err() {
+                tracing::trace!("no subscribers for frame t={}", t);
             }
             for cause in causes {
                 info!(target = "cause", %cause.code, %cause.target, note = ?cause.note);
