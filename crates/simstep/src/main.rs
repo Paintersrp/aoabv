@@ -54,7 +54,7 @@ fn main() -> Result<()> {
     };
 
     for _ in 0..args.ticks {
-        let outputs = simulation.tick();
+        let outputs = simulation.tick()?;
         let line = outputs.frame.to_ndjson()?;
         writer.write_all(line.as_bytes())?;
         if let Some(writer) = cause_writer.as_mut() {

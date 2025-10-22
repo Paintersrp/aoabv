@@ -9,7 +9,8 @@ pub mod world;
 
 use anyhow::Result;
 use cause::Entry;
-use diff::Diff;
+use diff::{Diff, Highlight};
+use fixed::WATER_MAX;
 use io::frame::Frame;
 use io::seed::{SeedDocument, SeedRealization};
 use kernels::{climate, ecology};
@@ -48,7 +49,7 @@ impl Simulation {
     }
 
     /// Run a single deterministic tick, returning the NDJSON frame and causes emitted.
-    pub fn tick(&mut self) -> TickOutputs {
+    pub fn tick(&mut self) -> Result<TickOutputs> {
         let next_tick = self.world.tick + 1;
 
         let mut aggregate_diff = Diff::default();
@@ -57,26 +58,54 @@ impl Simulation {
 
         // Climate kernel.
         let mut climate_rng = Stream::from(self.world.seed, climate::STAGE, next_tick);
-        let climate_output = climate::run(&self.world, &mut climate_rng);
-        apply_diff(&mut self.world, &climate_output.diff);
-        aggregate_diff.merge(&climate_output.diff);
-        highlights.extend(climate_output.highlights.into_iter());
-        chronicle.extend(climate_output.chronicle.into_iter());
+        let climate_diff = climate::update(&self.world, &mut climate_rng)?;
+        {
+            for change in &climate_diff.biome {
+                if let Some(region) = self.world.regions.get(change.region as usize) {
+                    chronicle.push(format!(
+                        "Region {} shifted biome to {}",
+                        region.id, change.biome
+                    ));
+                }
+            }
+        }
+        apply_diff(&mut self.world, &climate_diff);
+        aggregate_diff.merge(&climate_diff);
 
         // Ecology kernel uses the climate-updated world state.
         let mut ecology_rng = Stream::from(self.world.seed, ecology::STAGE, next_tick);
-        let ecology_output = ecology::run(&self.world, &mut ecology_rng);
-        apply_diff(&mut self.world, &ecology_output.diff);
-        aggregate_diff.merge(&ecology_output.diff);
-        highlights.extend(ecology_output.highlights.into_iter());
-        chronicle.extend(ecology_output.chronicle.into_iter());
+        let ecology_diff = ecology::update(&self.world, &mut ecology_rng)?;
+        {
+            for hazard in &ecology_diff.hazards {
+                if let Some(region) = self.world.regions.get(hazard.region as usize) {
+                    if hazard.drought > 3_000 {
+                        highlights.push(Highlight::hazard(
+                            region.id,
+                            "drought",
+                            hazard.drought as f32 / WATER_MAX as f32,
+                        ));
+                        chronicle
+                            .push(format!("Region {} faces an extended dry spell.", region.id));
+                    } else if hazard.flood > 1_000 {
+                        highlights.push(Highlight::hazard(
+                            region.id,
+                            "flood",
+                            hazard.flood as f32 / WATER_MAX as f32,
+                        ));
+                        chronicle.push(format!("Region {} endures seasonal floods.", region.id));
+                    }
+                }
+            }
+        }
+        apply_diff(&mut self.world, &ecology_diff);
+        aggregate_diff.merge(&ecology_diff);
 
         self.world.tick = next_tick;
 
         let mut diff_for_frame = aggregate_diff;
         let causes = diff_for_frame.take_causes();
 
-        TickOutputs {
+        Ok(TickOutputs {
             frame: Frame {
                 t: next_tick,
                 diff: diff_for_frame,
@@ -85,7 +114,7 @@ impl Simulation {
                 era_end: false,
             },
             causes,
-        }
+        })
     }
 }
 
@@ -106,7 +135,7 @@ mod tests {
         let doc: SeedDocument = serde_json::from_str(seed_json).unwrap();
         let mut sim = Simulation::from_seed_document(doc, Some(777)).unwrap();
         let prev_tick = sim.world.tick;
-        let _ = sim.tick();
+        let _ = sim.tick().unwrap();
         assert_eq!(sim.world.tick, prev_tick + 1);
     }
 }
