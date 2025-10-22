@@ -14,7 +14,7 @@ use fixed::WATER_MAX;
 use io::frame::Frame;
 use io::seed::{SeedDocument, SeedRealization};
 use kernels::{climate, ecology};
-use reduce::apply_diff;
+use reduce::apply;
 use rng::Stream;
 use world::World;
 
@@ -69,8 +69,8 @@ impl Simulation {
                 }
             }
         }
-        apply_diff(&mut self.world, &climate_diff);
         aggregate_diff.merge(&climate_diff);
+        apply(&mut self.world, climate_diff);
 
         // Ecology kernel uses the climate-updated world state.
         let mut ecology_rng = Stream::from(self.world.seed, ecology::STAGE, next_tick);
@@ -97,8 +97,8 @@ impl Simulation {
                 }
             }
         }
-        apply_diff(&mut self.world, &ecology_diff);
         aggregate_diff.merge(&ecology_diff);
+        apply(&mut self.world, ecology_diff);
 
         self.world.tick = next_tick;
 
