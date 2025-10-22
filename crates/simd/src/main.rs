@@ -34,7 +34,7 @@ struct Args {
     bind: String,
 
     /// Port to listen on for WebSocket clients.
-    #[arg(long, default_value_t = 8080)]
+    #[arg(long, default_value_t = 8787)]
     port: u16,
 
     /// Milliseconds to sleep between ticks.
