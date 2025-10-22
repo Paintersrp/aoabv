@@ -34,7 +34,7 @@ struct Args {
     bind: String,
 
     /// Port to listen on for WebSocket clients.
-    #[arg(long, default_value_t = 8080)]
+    #[arg(long, default_value_t = 8787)]
     port: u16,
 
     /// Milliseconds to sleep between ticks.
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
 
     let seed_doc = SeedDocument::load_from_path(&args.seed)
         .with_context(|| format!("failed to load seed from {:?}", args.seed))?;
-    let mut simulation = Simulation::from_seed_document(seed_doc, args.world_seed)?;
+    let simulation = Simulation::from_seed_document(seed_doc, args.world_seed)?;
 
     let (tx, _rx) = broadcast::channel::<String>(128);
     let state = AppState { tx: tx.clone() };

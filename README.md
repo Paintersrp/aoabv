@@ -24,10 +24,10 @@ The viewer (Godot 4.5) will connect to the daemon and consume the `sim_core` fra
    ```
 4. Start the streaming daemon:
    ```bash
-   cargo run -p simd -- --seed ./testdata/seeds/wet_equator.json --port 8080
+   cargo run -p simd -- --seed ./testdata/seeds/wet_equator.json --port 8787
    # or: make simd
    ```
-   The daemon serves a WebSocket endpoint at `ws://localhost:8080/stream`. Each message is a single NDJSON line conforming to §3 of `AGENTS.md`.
+   The daemon serves a WebSocket endpoint at `ws://localhost:8787/stream`. Each message is a single NDJSON line conforming to §3 of `AGENTS.md`.
 
 ## Determinism contract
 
