@@ -12,7 +12,7 @@ use cause::Entry;
 use diff::Diff;
 use fixed::WATER_MAX;
 use io::frame::Highlight;
-use io::seed::{SeedDocument, SeedRealization};
+use io::seed::{build_world, Seed};
 use kernels::{climate, ecology};
 use reduce::apply;
 use rng::Stream;
@@ -35,16 +35,13 @@ pub struct Simulation {
 
 impl Simulation {
     /// Construct the simulation from a parsed seed document and optional world seed override.
-    pub fn from_seed_document(doc: SeedDocument, world_seed_override: Option<u64>) -> Result<Self> {
-        let realization = doc.realize(world_seed_override)?;
-        Ok(Self::new(realization))
+    pub fn from_seed(seed: Seed, world_seed_override: Option<u64>) -> Result<Self> {
+        Ok(Self::from_world(build_world(&seed, world_seed_override)))
     }
 
-    /// Construct the simulation from a realised seed.
-    pub fn new(realization: SeedRealization) -> Self {
-        Self {
-            world: realization.world,
-        }
+    /// Construct the simulation from an already realised [`World`].
+    pub fn from_world(world: World) -> Self {
+        Self { world }
     }
 
     /// Access the current world snapshot.
@@ -123,7 +120,7 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::seed::SeedDocument;
+    use crate::io::seed::Seed;
 
     #[test]
     fn tick_advances_world() {
@@ -134,8 +131,8 @@ mod tests {
             "elevation_noise": {"octaves": 1, "freq": 0.1, "amp": 1.0, "seed": 42},
             "humidity_bias": {"equator": 0.2, "poles": -0.2}
         }"#;
-        let doc: SeedDocument = serde_json::from_str(seed_json).unwrap();
-        let mut sim = Simulation::from_seed_document(doc, Some(777)).unwrap();
+        let seed: Seed = serde_json::from_str(seed_json).unwrap();
+        let mut sim = Simulation::from_seed(seed, Some(777)).unwrap();
         let prev_tick = sim.world.tick;
         let _ = sim.tick().unwrap();
         assert_eq!(sim.world.tick, prev_tick + 1);

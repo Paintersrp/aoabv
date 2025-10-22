@@ -9,73 +9,75 @@ use crate::fixed::{clamp_u16, SOIL_MAX, WATER_MAX};
 use crate::rng::Stream;
 use crate::world::{Hazards, Region, World};
 
+/// Parsed seed definition describing the deterministic initial world.
 #[derive(Clone, Debug, Deserialize)]
-pub struct SeedDocument {
+pub struct Seed {
     pub name: String,
     pub width: u32,
     pub height: u32,
-    pub elevation_noise: ElevationNoise,
-    pub humidity_bias: HumidityBias,
+    #[serde(rename = "elevation_noise")]
+    pub noise: Noise,
+    #[serde(rename = "humidity_bias")]
+    pub humidity: Humidity,
 }
 
+/// Multi-octave pseudo-noise configuration for elevation sampling.
 #[derive(Clone, Debug, Deserialize)]
-pub struct ElevationNoise {
+pub struct Noise {
     pub octaves: u8,
     pub freq: f64,
     pub amp: f64,
     pub seed: u64,
 }
 
+/// Deterministic humidity bias per latitude band.
 #[derive(Clone, Debug, Deserialize)]
-pub struct HumidityBias {
+pub struct Humidity {
     pub equator: f64,
     pub poles: f64,
 }
 
-pub struct SeedRealization {
-    pub world: World,
-}
-
-impl SeedDocument {
+impl Seed {
+    /// Load a seed JSON document from disk.
     pub fn load_from_path(path: &Path) -> Result<Self> {
         let file =
             File::open(path).with_context(|| format!("failed to open seed file {:?}", path))?;
         Self::from_reader(BufReader::new(file))
     }
 
+    /// Deserialize a seed document from an arbitrary reader.
     pub fn from_reader<R: Read>(reader: R) -> Result<Self> {
         Ok(serde_json::from_reader(reader).context("invalid seed json")?)
     }
+}
 
-    pub fn realize(&self, world_seed_override: Option<u64>) -> Result<SeedRealization> {
-        let world_seed = world_seed_override.unwrap_or(self.elevation_noise.seed);
-        let mut regions = Vec::with_capacity((self.width * self.height) as usize);
-        let mut id: u32 = 0;
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let latitude = latitude_from_grid(y, self.height);
-                let elevation = sample_elevation(world_seed, &self.elevation_noise, x, y);
-                let (water, soil) =
-                    initial_resources(world_seed, &self.humidity_bias, latitude, elevation, x, y);
-                regions.push(Region {
-                    id,
-                    x,
-                    y,
-                    elevation_m: elevation,
-                    latitude_deg: latitude,
-                    biome: 0,
-                    water,
-                    soil,
-                    hazards: Hazards::default(),
-                });
-                id += 1;
-            }
+/// Realise a [`World`] from the given seed description.
+pub fn build_world(seed: &Seed, world_seed_override: Option<u64>) -> World {
+    let world_seed = world_seed_override.unwrap_or(seed.noise.seed);
+    let mut regions = Vec::with_capacity((seed.width * seed.height) as usize);
+    let mut id: u32 = 0;
+    for y in 0..seed.height {
+        for x in 0..seed.width {
+            let latitude = latitude_from_grid(y, seed.height);
+            let elevation = sample_elevation(world_seed, &seed.noise, x, y);
+            let (water, soil) =
+                initial_resources(world_seed, &seed.humidity, latitude, elevation, x, y);
+            regions.push(Region {
+                id,
+                x,
+                y,
+                elevation_m: elevation,
+                latitude_deg: latitude,
+                biome: 0,
+                water,
+                soil,
+                hazards: Hazards::default(),
+            });
+            id += 1;
         }
-
-        Ok(SeedRealization {
-            world: World::new(world_seed, self.width, self.height, regions),
-        })
     }
+
+    World::new(world_seed, seed.width, seed.height, regions)
 }
 
 fn latitude_from_grid(y: u32, height: u32) -> f64 {
@@ -83,7 +85,7 @@ fn latitude_from_grid(y: u32, height: u32) -> f64 {
     90.0 - ratio * 180.0
 }
 
-fn sample_elevation(seed: u64, noise: &ElevationNoise, x: u32, y: u32) -> i32 {
+fn sample_elevation(seed: u64, noise: &Noise, x: u32, y: u32) -> i32 {
     let mut octave = 0;
     let mut amplitude = noise.amp;
     let mut total = 0.0;
@@ -100,7 +102,7 @@ fn sample_elevation(seed: u64, noise: &ElevationNoise, x: u32, y: u32) -> i32 {
 
 fn initial_resources(
     seed: u64,
-    humidity: &HumidityBias,
+    humidity: &Humidity,
     latitude_deg: f64,
     elevation_m: i32,
     x: u32,
