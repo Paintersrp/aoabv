@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use serde::ser::{SerializeMap, SerializeStruct};
 use serde::{Deserialize, Serialize};
 
@@ -65,15 +67,31 @@ impl Diff {
         }
     }
 
+    /// Insert a cause entry while maintaining a deterministic ordering by
+    /// `(target, code, note)`.
     pub fn record_cause(&mut self, cause: Entry) {
-        self.causes.push(cause);
+        let position =
+            self.causes
+                .binary_search_by(|existing| match existing.target.cmp(&cause.target) {
+                    Ordering::Equal => match existing.code.cmp(&cause.code) {
+                        Ordering::Equal => existing.note.cmp(&cause.note),
+                        other => other,
+                    },
+                    other => other,
+                });
+        match position {
+            Ok(idx) => self.causes.insert(idx + 1, cause),
+            Err(idx) => self.causes.insert(idx, cause),
+        }
     }
 
     pub fn extend_causes<I>(&mut self, causes: I)
     where
         I: IntoIterator<Item = Entry>,
     {
-        self.causes.extend(causes);
+        for cause in causes {
+            self.record_cause(cause);
+        }
     }
 
     pub fn merge(&mut self, other: &Diff) {
@@ -98,7 +116,9 @@ impl Diff {
         for hazard in &other.hazards {
             self.record_hazard(hazard.region as usize, hazard.drought, hazard.flood);
         }
-        self.causes.extend(other.causes.iter().cloned());
+        for cause in other.causes.iter().cloned() {
+            self.record_cause(cause);
+        }
     }
 
     pub fn take_causes(&mut self) -> Vec<Entry> {
