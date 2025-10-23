@@ -70,6 +70,7 @@ Simulation stages derive deterministic RNG substreams from `(seed, stage_id, tic
 * [`/docs/systems_contract.md`](docs/systems_contract.md) — authoritative wire/data model for frames, seeds, and world state.
 * [`/docs/cause_codes.md`](docs/cause_codes.md) — canonical list of cause codes emitted by the simulation.
 * [`/docs/roadmap.md`](docs/roadmap.md) — release timeline, milestones, and deferred features.
+* [`/docs/v0.0_verification.md`](docs/v0.0_verification.md) — verification ledger for v0.0 runs, including command history and deterministic hashes.
 
 ## Repository layout
 
