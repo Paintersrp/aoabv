@@ -6,12 +6,17 @@ public partial class MapRenderer : Node2D
 {
     private const int TileSize = 8;
 
+    // Keep this palette in sync with `classify_biome` (sim_core/kernels/climate.rs).
+    // Index meaning: 0 polar tundra, 1 boreal/grassland mix, 2 temperate forest/savannah,
+    // 3 dry steppe, 4 desert, 5 tropical rainforest.
     private static readonly Color[] BiomePalette =
     {
-        new Color("#2f4858"),
-        new Color("#33658a"),
-        new Color("#55dde0"),
-        new Color("#f6ae2d")
+        new Color("#b0e4ff"),
+        new Color("#4f7942"),
+        new Color("#8fd694"),
+        new Color("#f0c755"),
+        new Color("#d08c60"),
+        new Color("#1b998b")
     };
 
     private static readonly Color DefaultColor = new Color("#1b1b2f");
