@@ -12,7 +12,7 @@ use diff::Diff;
 use fixed::WATER_MAX;
 use io::frame::Highlight;
 use kernels::{
-    climate,
+    astronomy, climate,
     ecology::{self, DROUGHT_ALERT_THRESHOLD, FLOOD_ALERT_THRESHOLD},
 };
 use reduce::apply;
@@ -34,6 +34,13 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
 
     let mut aggregate_diff = Diff::default();
     let mut chronicle = Vec::new();
+
+    // Astronomy kernel establishes irradiance and tide envelopes.
+    let mut astronomy_rng = Stream::from(seed, astronomy::STAGE, tick);
+    let (astronomy_diff, mut astronomy_chronicle) = astronomy::update(world, &mut astronomy_rng)?;
+    chronicle.append(&mut astronomy_chronicle);
+    aggregate_diff.merge(&astronomy_diff);
+    apply(world, astronomy_diff);
 
     // Climate kernel.
     let mut climate_rng = Stream::from(seed, climate::STAGE, tick);
