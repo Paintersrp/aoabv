@@ -1,11 +1,25 @@
 use crate::cause::{Code, Entry};
 use crate::diff::Diff;
-use crate::fixed::{clamp_u16, resource_ratio, SOIL_MAX, WATER_MAX};
+use crate::fixed::{clamp_hazard_meter, clamp_u16, resource_ratio, SOIL_MAX, WATER_MAX};
 use crate::rng::Stream;
 use crate::world::World;
 use anyhow::{ensure, Result};
 
 pub const STAGE: &str = "kernel:ecology";
+
+/// Hazard level required before emitting alerts or highlights for droughts.
+pub const DROUGHT_ALERT_THRESHOLD: u16 = 2_500;
+/// Hazard level required before emitting alerts or highlights for floods.
+pub const FLOOD_ALERT_THRESHOLD: u16 = 750;
+
+/// Blend the previous hazard gauge toward the new target with a per-tick half-life.
+///
+/// Each invocation halves the difference between the stored gauge and the incoming
+/// target, yielding deterministic exponential decay without floating point noise.
+fn blend_hazard(previous: u16, target: u16) -> u16 {
+    let blended = (u32::from(previous) + u32::from(target)) / 2;
+    clamp_hazard_meter(blended as u16)
+}
 
 struct BiomeProfile {
     water_target: f64,
@@ -92,19 +106,21 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
         let new_water = clamp_u16(region.water as i32 + water_delta, 0, WATER_MAX);
         let new_soil = clamp_u16(region.soil as i32 + soil_delta, 0, SOIL_MAX);
 
-        let drought_level = WATER_MAX.saturating_sub(new_water);
-        let flood_level = new_water.saturating_sub(WATER_MAX - 1_500);
+        let drought_target = WATER_MAX.saturating_sub(new_water);
+        let flood_target = new_water.saturating_sub(WATER_MAX - 1_500);
+        let drought_level = blend_hazard(region.hazards.drought, drought_target);
+        let flood_level = blend_hazard(region.hazards.flood, flood_target);
         if drought_level != region.hazards.drought || flood_level != region.hazards.flood {
             diff.record_hazard(region.index(), drought_level, flood_level);
         }
 
-        if drought_level > 3_000 {
+        if drought_level > DROUGHT_ALERT_THRESHOLD {
             diff.record_cause(Entry::new(
                 format!("region:{}/water", region.id),
                 Code::DroughtFlag,
                 Some(format!("level={}", drought_level)),
             ));
-        } else if flood_level > 1_000 {
+        } else if flood_level > FLOOD_ALERT_THRESHOLD {
             diff.record_cause(Entry::new(
                 format!("region:{}/water", region.id),
                 Code::FloodFlag,
@@ -196,6 +212,15 @@ mod tests {
             prop_assert!(next_soil <= SOIL_MAX);
             prop_assert!(i32::from(next_water) >= 0);
             prop_assert!(i32::from(next_soil) >= 0);
+        }
+    }
+
+    #[test]
+    fn hazard_gauges_decay_without_new_stressors() {
+        let mut level = 6_000u16;
+        for expected in [3_000, 1_500, 750, 375, 187, 93, 46, 23, 11, 5, 2, 1, 0] {
+            level = blend_hazard(level, 0);
+            assert_eq!(level, expected);
         }
     }
 }

@@ -11,7 +11,10 @@ use anyhow::{ensure, Result};
 use diff::Diff;
 use fixed::WATER_MAX;
 use io::frame::Highlight;
-use kernels::{climate, ecology};
+use kernels::{
+    climate,
+    ecology::{self, DROUGHT_ALERT_THRESHOLD, FLOOD_ALERT_THRESHOLD},
+};
 use reduce::apply;
 use rng::Stream;
 use world::World;
@@ -51,9 +54,9 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     let ecology_diff = ecology::update(world, &mut ecology_rng)?;
     for hazard in &ecology_diff.hazards {
         if let Some(region) = world.regions.get(hazard.region as usize) {
-            if hazard.drought > 3_000 {
+            if hazard.drought > DROUGHT_ALERT_THRESHOLD {
                 chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
-            } else if hazard.flood > 1_000 {
+            } else if hazard.flood > FLOOD_ALERT_THRESHOLD {
                 chronicle.push(format!("Region {} endures seasonal floods.", region.id));
             }
         }
@@ -71,13 +74,13 @@ pub fn collect_highlights(world: &World, diff: &Diff) -> Vec<Highlight> {
     let mut highlights = Vec::new();
     for hazard in &diff.hazards {
         if let Some(region) = world.regions.get(hazard.region as usize) {
-            if hazard.drought > 3_000 {
+            if hazard.drought > DROUGHT_ALERT_THRESHOLD {
                 highlights.push(Highlight::hazard(
                     region.id,
                     "drought",
                     hazard.drought as f32 / WATER_MAX as f32,
                 ));
-            } else if hazard.flood > 1_000 {
+            } else if hazard.flood > FLOOD_ALERT_THRESHOLD {
                 highlights.push(Highlight::hazard(
                     region.id,
                     "flood",
