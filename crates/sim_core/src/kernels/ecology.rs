@@ -8,16 +8,29 @@ use anyhow::{ensure, Result};
 pub const STAGE: &str = "kernel:ecology";
 
 /// Hazard level required before emitting alerts or highlights for droughts.
-pub const DROUGHT_ALERT_THRESHOLD: u16 = 2_500;
+pub const DROUGHT_ALERT_THRESHOLD: u16 = 2_000;
 /// Hazard level required before emitting alerts or highlights for floods.
-pub const FLOOD_ALERT_THRESHOLD: u16 = 750;
+pub const FLOOD_ALERT_THRESHOLD: u16 = 600;
 
 /// Blend the previous hazard gauge toward the new target with a per-tick half-life.
 ///
 /// Each invocation halves the difference between the stored gauge and the incoming
-/// target, yielding deterministic exponential decay without floating point noise.
+/// target while rounding away from zero, yielding deterministic exponential decay
+/// without floating point noise or stalls at low magnitudes.
 fn blend_hazard(previous: u16, target: u16) -> u16 {
-    let blended = (u32::from(previous) + u32::from(target)) / 2;
+    if previous == target {
+        return clamp_hazard_meter(previous);
+    }
+
+    let prev = i32::from(previous);
+    let goal = i32::from(target);
+    let diff = goal - prev;
+    let step = if diff > 0 {
+        (diff + 1) / 2
+    } else {
+        -(((-diff) + 1) / 2)
+    };
+    let blended = (prev + step).max(0);
     clamp_hazard_meter(blended as u16)
 }
 
@@ -144,6 +157,7 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
 mod tests {
     use super::*;
     use crate::rng::Stream;
+    use crate::{reduce, world};
     use proptest::prelude::*;
 
     #[test]
@@ -218,9 +232,63 @@ mod tests {
     #[test]
     fn hazard_gauges_decay_without_new_stressors() {
         let mut level = 6_000u16;
-        for expected in [3_000, 1_500, 750, 375, 187, 93, 46, 23, 11, 5, 2, 1, 0] {
+        let expected = [3_000, 1_500, 750, 375, 187, 93, 46, 23, 11, 5, 2, 1, 0];
+        for &value in &expected {
             level = blend_hazard(level, 0);
-            assert_eq!(level, expected);
+            assert_eq!(level, value);
         }
+        assert_eq!(blend_hazard(0, 6_000), 3_000);
+        assert_eq!(blend_hazard(1, 0), 0);
+    }
+
+    #[test]
+    fn flood_hazard_diff_records_decay() {
+        let seed = find_zero_noise_seed().expect("seed for deterministic noise");
+        let mut world = world::World::new(
+            seed,
+            1,
+            1,
+            vec![world::Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 10,
+                latitude_deg: 0.0,
+                biome: 5,
+                water: 8_500,
+                soil: 7_500,
+                hazards: world::Hazards {
+                    drought: 0,
+                    flood: 6_000,
+                },
+            }],
+        );
+
+        let mut rng = Stream::from(world.seed, STAGE, 1);
+        let expected_levels = [3_000, 1_500, 750, 375, 187, 93, 46, 23, 11, 5, 2, 1, 0];
+        for &expected in &expected_levels {
+            let diff = update(&world, &mut rng).expect("ecology update");
+            let hazard = diff
+                .hazards
+                .iter()
+                .find(|event| event.region == 0)
+                .map(|event| event.flood);
+
+            assert_eq!(hazard.unwrap_or(0), expected);
+            reduce::apply(&mut world, diff);
+            assert_eq!(world.regions[0].hazards.flood, expected);
+        }
+    }
+
+    fn find_zero_noise_seed() -> Option<u64> {
+        for seed in 0..10_000 {
+            let stream = Stream::from(seed, STAGE, 1);
+            let mut region_stream = stream.derive(0);
+            let noise = (region_stream.next_signed_unit() * 25.0) as i32;
+            if noise == 0 {
+                return Some(seed);
+            }
+        }
+        None
     }
 }
