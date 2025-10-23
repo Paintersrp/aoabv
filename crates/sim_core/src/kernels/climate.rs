@@ -163,23 +163,99 @@ mod tests {
 
     #[test]
     fn biome_classification_varies_by_latitude() {
-        let regions: Vec<Region> = (0..5)
-            .map(|i| Region {
-                id: i,
-                x: i,
+        struct BeltCase {
+            latitude: f64,
+            /// Allowed biome tiers for this latitude band (wettest to driest).
+            allowed_biomes: &'static [u8],
+            label: &'static str,
+        }
+
+        // Documented expectations for maintainability. Keep in sync with
+        // `classify_biome` should biome tiers change.
+        let belt_cases = [
+            BeltCase {
+                latitude: 0.0,
+                allowed_biomes: &[5, 3, 4], // equatorial: rainforest → steppe → desert
+                label: "equatorial",
+            },
+            BeltCase {
+                latitude: 20.0,
+                allowed_biomes: &[5, 2, 4], // subtropical: rainforest → savannah → desert
+                label: "subtropical",
+            },
+            BeltCase {
+                latitude: 35.0,
+                allowed_biomes: &[2, 1, 3], // temperate: forest → boreal mix → steppe
+                label: "temperate",
+            },
+            BeltCase {
+                latitude: 50.0,
+                allowed_biomes: &[1, 0], // subpolar: boreal mix → tundra
+                label: "subpolar",
+            },
+            BeltCase {
+                latitude: 70.0,
+                allowed_biomes: &[0], // polar: tundra/ice
+                label: "polar",
+            },
+        ];
+
+        const TEST_SEED: u64 = 0xA5A5_F0F0_A5A5_F0F0;
+        const TEST_TICK: u64 = 7;
+
+        let regions: Vec<Region> = belt_cases
+            .iter()
+            .enumerate()
+            .map(|(i, case)| Region {
+                id: i as u32,
+                x: i as u32,
                 y: 0,
                 elevation_m: 100,
-                latitude_deg: -60.0 + f64::from(i) * 30.0,
-                biome: 0,
+                latitude_deg: case.latitude,
+                biome: u8::MAX, // ensure every case records a biome diff
                 water: 5_000,
                 soil: 5_000,
                 hazards: Hazards::default(),
             })
             .collect();
-        let world = World::new(11, 5, 1, regions);
-        let mut rng = Stream::from(world.seed, STAGE, 1);
-        let diff = update(&world, &mut rng).unwrap();
-        assert!(diff.biome.len() >= 3);
+
+        let world = World::new(TEST_SEED, belt_cases.len() as u32, 1, regions);
+        let mut rng = Stream::from(TEST_SEED, STAGE, TEST_TICK);
+        let diff = update(&world, &mut rng).expect("climate update should succeed");
+
+        assert_eq!(diff.biome.len(), belt_cases.len());
+
+        for (index, case) in belt_cases.iter().enumerate() {
+            let belt = LatitudeBelt::from_latitude(case.latitude);
+            let change = diff
+                .biome
+                .iter()
+                .find(|entry| entry.region as usize == index)
+                .expect("expected biome change for test region");
+            let biome = change.biome as u8;
+
+            assert!(
+                case.allowed_biomes.contains(&biome),
+                "{} belt produced biome {}, expected one of {:?}",
+                case.label,
+                biome,
+                case.allowed_biomes
+            );
+
+            if matches!(belt, LatitudeBelt::Equatorial) {
+                assert_ne!(
+                    biome, 0,
+                    "equatorial regions should never resolve to the polar biome"
+                );
+            }
+
+            if matches!(belt, LatitudeBelt::Polar) {
+                assert_eq!(
+                    biome, 0,
+                    "polar regions should be able to resolve to the polar biome"
+                );
+            }
+        }
     }
 
     #[test]
