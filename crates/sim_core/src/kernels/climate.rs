@@ -171,31 +171,38 @@ mod tests {
         }
 
         // Documented expectations for maintainability. Keep in sync with
-        // `classify_biome` should biome tiers change.
+        // `classify_biome` whenever biome tiers change.
+        //
+        // Latitude → biome ladder (wet → dry):
+        // * equatorial (<15°): rainforest (5) → steppe (3) → desert (4)
+        // * subtropical (<30°): rainforest (5) → savannah/temperate mix (2) → desert (4)
+        // * temperate (<45°): temperate forest (2) → boreal/grassland mix (1) → steppe (3)
+        // * subpolar (<60°): boreal mix (1) → polar tundra (0)
+        // * polar (≥60°): polar tundra/ice (0)
         let belt_cases = [
             BeltCase {
                 latitude: 0.0,
-                allowed_biomes: &[5, 3, 4], // equatorial: rainforest → steppe → desert
+                allowed_biomes: &[5, 3, 4],
                 label: "equatorial",
             },
             BeltCase {
                 latitude: 20.0,
-                allowed_biomes: &[5, 2, 4], // subtropical: rainforest → savannah → desert
+                allowed_biomes: &[5, 2, 4],
                 label: "subtropical",
             },
             BeltCase {
                 latitude: 35.0,
-                allowed_biomes: &[2, 1, 3], // temperate: forest → boreal mix → steppe
+                allowed_biomes: &[2, 1, 3],
                 label: "temperate",
             },
             BeltCase {
                 latitude: 50.0,
-                allowed_biomes: &[1, 0], // subpolar: boreal mix → tundra
+                allowed_biomes: &[1, 0],
                 label: "subpolar",
             },
             BeltCase {
                 latitude: 70.0,
-                allowed_biomes: &[0], // polar: tundra/ice
+                allowed_biomes: &[0],
                 label: "polar",
             },
         ];
@@ -220,6 +227,7 @@ mod tests {
             .collect();
 
         let world = World::new(TEST_SEED, belt_cases.len() as u32, 1, regions);
+        // Fixed RNG seed + tick ensure deterministic seasonal shifts across runs.
         let mut rng = Stream::from(TEST_SEED, STAGE, TEST_TICK);
         let diff = update(&world, &mut rng).expect("climate update should succeed");
 
