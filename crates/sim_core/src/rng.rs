@@ -66,6 +66,11 @@ impl Stream {
     }
 }
 
+/// Produce a deterministic label for deriving child streams.
+pub fn stream_label(name: &str) -> u64 {
+    fnv1a64(name.as_bytes())
+}
+
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf29ce484222325u64;
     for &b in bytes {

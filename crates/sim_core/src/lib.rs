@@ -17,7 +17,7 @@ use kernels::{
     geodynamics,
 };
 use reduce::apply;
-use rng::Stream;
+use rng::{stream_label, Stream};
 use world::World;
 
 /// Execute a single deterministic simulation tick.
@@ -36,15 +36,17 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     let mut aggregate_diff = Diff::default();
     let mut chronicle = Vec::new();
 
+    let climate_stage_rng = Stream::from(seed, climate::STAGE, tick);
+
     // Astronomy kernel establishes irradiance and tide envelopes.
-    let mut astronomy_rng = Stream::from(seed, astronomy::STAGE, tick);
+    let mut astronomy_rng = climate_stage_rng.derive(stream_label(astronomy::STAGE));
     let (astronomy_diff, mut astronomy_chronicle) = astronomy::update(world, &mut astronomy_rng)?;
     chronicle.append(&mut astronomy_chronicle);
     aggregate_diff.merge(&astronomy_diff);
     apply(world, astronomy_diff);
 
     // Geodynamics kernel adjusts topography before climate updates.
-    let mut geodynamics_rng = Stream::from(seed, geodynamics::STAGE, tick);
+    let mut geodynamics_rng = climate_stage_rng.derive(stream_label(geodynamics::STAGE));
     let (geodynamics_diff, mut geodynamics_chronicle) =
         geodynamics::update(world, &mut geodynamics_rng)?;
     chronicle.append(&mut geodynamics_chronicle);
@@ -52,7 +54,7 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     apply(world, geodynamics_diff);
 
     // Climate kernel.
-    let mut climate_rng = Stream::from(seed, climate::STAGE, tick);
+    let mut climate_rng = climate_stage_rng.derive(stream_label("kernel:climate/core"));
     let climate_diff = climate::update(world, &mut climate_rng)?;
     for change in &climate_diff.biome {
         if let Some(region) = world.regions.get(change.region as usize) {
@@ -66,7 +68,7 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     apply(world, climate_diff);
 
     // Ecology kernel uses the climate-updated world state.
-    let mut ecology_rng = Stream::from(seed, ecology::STAGE, tick);
+    let mut ecology_rng = climate_stage_rng.derive(stream_label(ecology::STAGE));
     let ecology_diff = ecology::update(world, &mut ecology_rng)?;
     for hazard in &ecology_diff.hazards {
         if let Some(region) = world.regions.get(hazard.region as usize) {
@@ -79,6 +81,10 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     }
     aggregate_diff.merge(&ecology_diff);
     apply(world, ecology_diff);
+
+    // Chronicle stream reserved for downstream narrative kernels.
+    let mut chronicle_rng = climate_stage_rng.derive(stream_label("kernel:chronicle"));
+    let _ = chronicle_rng.next_u64();
 
     world.tick = tick;
 
