@@ -14,6 +14,7 @@ use io::frame::Highlight;
 use kernels::{
     astronomy, climate,
     ecology::{self, DROUGHT_ALERT_THRESHOLD, FLOOD_ALERT_THRESHOLD},
+    geodynamics,
 };
 use reduce::apply;
 use rng::Stream;
@@ -41,6 +42,14 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     chronicle.append(&mut astronomy_chronicle);
     aggregate_diff.merge(&astronomy_diff);
     apply(world, astronomy_diff);
+
+    // Geodynamics kernel adjusts topography before climate updates.
+    let mut geodynamics_rng = Stream::from(seed, geodynamics::STAGE, tick);
+    let (geodynamics_diff, mut geodynamics_chronicle) =
+        geodynamics::update(world, &mut geodynamics_rng)?;
+    chronicle.append(&mut geodynamics_chronicle);
+    aggregate_diff.merge(&geodynamics_diff);
+    apply(world, geodynamics_diff);
 
     // Climate kernel.
     let mut climate_rng = Stream::from(seed, climate::STAGE, tick);
