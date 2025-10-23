@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum Code {
     LatitudeBelt,
+    OrographicLift,
     SeasonalityVariance,
     SoilFertilityLow,
     DroughtFlag,
@@ -18,6 +19,7 @@ impl std::fmt::Display for Code {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let label = match self {
             Code::LatitudeBelt => "latitude_belt",
+            Code::OrographicLift => "orographic_lift",
             Code::SeasonalityVariance => "seasonality_variance",
             Code::SoilFertilityLow => "soil_fertility_low",
             Code::DroughtFlag => "drought_flag",
