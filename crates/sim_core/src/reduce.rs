@@ -8,6 +8,9 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.biome.sort_by_key(|change| change.region);
     diff.water.sort_by_key(|delta| delta.region);
     diff.soil.sort_by_key(|delta| delta.region);
+    diff.insolation.sort_by_key(|value| value.region);
+    diff.tide_envelope.sort_by_key(|value| value.region);
+    diff.elevation.sort_by_key(|value| value.region);
     diff.hazards.sort_by_key(|hazard| hazard.region);
 
     for change in diff.biome {
@@ -28,6 +31,12 @@ pub fn apply(world: &mut World, mut diff: Diff) {
         }
     }
 
+    for value in diff.elevation {
+        if let Some(region) = world.regions.get_mut(value.region as usize) {
+            region.elevation_m = value.value;
+        }
+    }
+
     for hazard in diff.hazards {
         if let Some(region) = world.regions.get_mut(hazard.region as usize) {
             region.hazards.drought = clamp_hazard_meter(hazard.drought);
@@ -39,7 +48,7 @@ pub fn apply(world: &mut World, mut diff: Diff) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diff::{BiomeChange, HazardEvent, ResourceDelta};
+    use crate::diff::{BiomeChange, HazardEvent, ResourceDelta, ScalarValue};
     use crate::world::{Hazards, Region};
 
     fn test_world() -> World {
@@ -150,6 +159,60 @@ mod tests {
                 delta: 5_000,
             },
         ];
+        unsorted_diff.insolation = vec![
+            ScalarValue {
+                region: 2,
+                value: 200,
+            },
+            ScalarValue {
+                region: 0,
+                value: 150,
+            },
+            ScalarValue {
+                region: 3,
+                value: 50,
+            },
+            ScalarValue {
+                region: 1,
+                value: 175,
+            },
+        ];
+        unsorted_diff.tide_envelope = vec![
+            ScalarValue {
+                region: 1,
+                value: 30,
+            },
+            ScalarValue {
+                region: 3,
+                value: 60,
+            },
+            ScalarValue {
+                region: 0,
+                value: 20,
+            },
+            ScalarValue {
+                region: 2,
+                value: 40,
+            },
+        ];
+        unsorted_diff.elevation = vec![
+            ScalarValue {
+                region: 2,
+                value: 1_500,
+            },
+            ScalarValue {
+                region: 0,
+                value: -250,
+            },
+            ScalarValue {
+                region: 3,
+                value: 75,
+            },
+            ScalarValue {
+                region: 1,
+                value: 40,
+            },
+        ];
         unsorted_diff.hazards = vec![
             HazardEvent {
                 region: 3,
@@ -177,6 +240,9 @@ mod tests {
         sorted_diff.biome.sort_by_key(|change| change.region);
         sorted_diff.water.sort_by_key(|delta| delta.region);
         sorted_diff.soil.sort_by_key(|delta| delta.region);
+        sorted_diff.insolation.sort_by_key(|value| value.region);
+        sorted_diff.tide_envelope.sort_by_key(|value| value.region);
+        sorted_diff.elevation.sort_by_key(|value| value.region);
         sorted_diff.hazards.sort_by_key(|hazard| hazard.region);
 
         let mut world_from_unsorted = test_world();
@@ -202,6 +268,7 @@ mod tests {
         assert_eq!(region0.biome, 0);
         assert_eq!(region0.water, crate::fixed::WATER_MAX);
         assert_eq!(region0.soil, 0);
+        assert_eq!(region0.elevation_m, -250);
         assert_eq!(region0.hazards.drought, 5);
         assert_eq!(region0.hazards.flood, 700);
 
@@ -209,6 +276,7 @@ mod tests {
         assert_eq!(region1.biome, 42);
         assert_eq!(region1.water, 0);
         assert_eq!(region1.soil, 300);
+        assert_eq!(region1.elevation_m, 40);
         assert_eq!(region1.hazards.drought, 250);
         assert_eq!(region1.hazards.flood, crate::fixed::WATER_MAX);
 
@@ -216,6 +284,7 @@ mod tests {
         assert_eq!(region2.biome, u8::MAX);
         assert_eq!(region2.water, crate::fixed::WATER_MAX);
         assert_eq!(region2.soil, crate::fixed::SOIL_MAX);
+        assert_eq!(region2.elevation_m, 1_500);
         assert_eq!(region2.hazards.drought, crate::fixed::WATER_MAX);
         assert_eq!(region2.hazards.flood, crate::fixed::WATER_MAX);
 
