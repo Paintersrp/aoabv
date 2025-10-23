@@ -3,6 +3,7 @@
 | Code | Stage | Description |
 | ---- | ----- | ----------- |
 | `latitude_belt` | climate | Region biome assignment derived from its latitude band. Note explains the band label. |
+| `orographic_lift` | climate | Elevated region relative to neighbours; note reports relative lift (km). |
 | `seasonality_variance` | climate | Seasonal variance applied to the region's moisture budget (range -1.0..1.0). |
 | `soil_fertility_low` | ecology | Soil value fell below the fertility floor (2_500). |
 | `drought_flag` | ecology | Water level under 7_000 (scaled) after ecology adjustments. |
