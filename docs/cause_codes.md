@@ -11,3 +11,10 @@
 | `era_end` | meta | Reserved for future milestones (unused in v0.0). |
 | `stagnation_warning` | meta | Reserved hook for growth stalls (unused in v0.0). |
 | `collapse_warning` | meta | Reserved hook for catastrophic collapse (unused in v0.0). |
+| `cme_event` | astronomy | Coronal mass ejection injects a transient irradiance spike; note records `severity`. |
+| `insolation_gradient` | astronomy | Latitude-driven insolation contrast; note records `delta_wm2`. |
+| `obliquity_shift` | astronomy | Planetary axial tilt adjustment; note records `delta_deg`. |
+| `precession_phase` | astronomy | Precession cycle update; note records `phase_deg`. |
+| `solar_cycle_peak` | astronomy | Solar cycle peak influences irradiance; note records `cycle_index`. |
+| `tide_neap` | astronomy | Neap tide envelope reduces tidal range; note records `phase`. |
+| `tide_spring` | astronomy | Spring tide envelope amplifies tidal range; note records `phase`. |
