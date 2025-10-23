@@ -128,8 +128,12 @@ public partial class WebSocketClient : Node
 
     private void DispatchFrame(Frame frame)
     {
+        if (frame.World != null)
+        {
+            _mapRenderer?.ConfigureWorldSize(frame.World.Width, frame.World.Height);
+        }
+
         var biomeDiff = new List<KeyValuePair<int, int>>();
-        int maxRegionIndex = -1;
 
         if (frame.Diff?.Biome != null)
         {
@@ -141,35 +145,10 @@ public partial class WebSocketClient : Node
                 }
 
                 biomeDiff.Add(new KeyValuePair<int, int>(regionIndex, kv.Value));
-                if (regionIndex > maxRegionIndex)
-                {
-                    maxRegionIndex = regionIndex;
-                }
             }
         }
 
-        if (frame.Diff?.Hazards != null)
-        {
-            foreach (var hazard in frame.Diff.Hazards)
-            {
-                if (hazard.Region > maxRegionIndex)
-                {
-                    maxRegionIndex = hazard.Region;
-                }
-            }
-
-            if (frame.Diff.Hazards.Count > 0)
-            {
-                var assumedTotal = frame.Diff.Hazards.Count;
-                if (assumedTotal - 1 > maxRegionIndex)
-                {
-                    maxRegionIndex = assumedTotal - 1;
-                }
-            }
-        }
-
-        int? regionCountHint = maxRegionIndex >= 0 ? maxRegionIndex + 1 : null;
-        _mapRenderer?.ApplyDiff(biomeDiff, regionCountHint);
+        _mapRenderer?.ApplyDiff(biomeDiff);
 
         var highlightCount = frame.Highlights?.Length ?? 0;
         _timelineHud?.UpdateFrame(frame.Tick, highlightCount, frame.Chronicle);
@@ -208,6 +187,9 @@ public partial class WebSocketClient : Node
         [JsonPropertyName("diff")]
         public FrameDiff? Diff { get; set; }
 
+        [JsonPropertyName("world")]
+        public FrameWorld? World { get; set; }
+
         [JsonPropertyName("highlights")]
         public FrameHighlight[]? Highlights { get; set; }
 
@@ -228,9 +210,6 @@ public partial class WebSocketClient : Node
 
         [JsonPropertyName("soil")]
         public Dictionary<string, int>? Soil { get; set; }
-
-        [JsonPropertyName("hazards")]
-        public List<FrameHazard>? Hazards { get; set; }
     }
 
     private sealed class FrameHighlight
@@ -245,15 +224,12 @@ public partial class WebSocketClient : Node
         public JsonElement Info { get; set; }
     }
 
-    private sealed class FrameHazard
+    private sealed class FrameWorld
     {
-        [JsonPropertyName("region")]
-        public int Region { get; set; }
+        [JsonPropertyName("width")]
+        public int Width { get; set; }
 
-        [JsonPropertyName("drought")]
-        public int Drought { get; set; }
-
-        [JsonPropertyName("flood")]
-        public int Flood { get; set; }
+        [JsonPropertyName("height")]
+        public int Height { get; set; }
     }
 }

@@ -39,58 +39,64 @@ public partial class MapRenderer : Node2D
         DrawTextureRect(_texture, new Rect2(Vector2.Zero, size), false);
     }
 
-    public void ApplyDiff(IEnumerable<KeyValuePair<int, int>>? biomeDiff, int? regionCountHint)
+    public void ConfigureWorldSize(int width, int height)
     {
-        if (regionCountHint.HasValue && regionCountHint.Value > 0)
+        width = Math.Max(width, 0);
+        height = Math.Max(height, 0);
+        if (width == _width && height == _height)
         {
-            EnsureCapacity(regionCountHint.Value);
+            return;
         }
 
+        _width = width;
+        _height = height;
+
+        var regionCount = Math.Max(_width * _height, 0);
+        if (regionCount <= 0)
+        {
+            _biomes = Array.Empty<byte>();
+            _image = null;
+            _texture = null;
+            QueueRedraw();
+            return;
+        }
+
+        if (_biomes.Length != regionCount)
+        {
+            _biomes = new byte[regionCount];
+        }
+        else
+        {
+            Array.Fill(_biomes, (byte)0);
+        }
+
+        RebuildSurface();
+    }
+
+    public void ApplyDiff(IEnumerable<KeyValuePair<int, int>>? biomeDiff)
+    {
         if (biomeDiff == null)
+        {
+            return;
+        }
+
+        var limit = _biomes.Length;
+        if (limit == 0)
         {
             return;
         }
 
         foreach (var change in biomeDiff)
         {
-            if (change.Key < 0)
+            if (change.Key < 0 || change.Key >= limit)
             {
                 continue;
             }
 
-            EnsureCapacity(change.Key + 1);
             UpdateBiome(change.Key, change.Value);
         }
 
         CommitIfDirty();
-    }
-
-    private void EnsureCapacity(int requiredRegions)
-    {
-        if (requiredRegions <= 0)
-        {
-            return;
-        }
-
-        if (_biomes.Length >= requiredRegions && _width * _height >= requiredRegions)
-        {
-            return;
-        }
-
-        var newCount = Math.Max(requiredRegions, _biomes.Length);
-        if (newCount == 0)
-        {
-            newCount = requiredRegions;
-        }
-
-        var oldLength = _biomes.Length;
-        Array.Resize(ref _biomes, newCount);
-        if (newCount > oldLength)
-        {
-            Array.Fill(_biomes, (byte)0, oldLength, newCount - oldLength);
-        }
-
-        RebuildSurface(newCount);
     }
 
     private void UpdateBiome(int regionIndex, int biomeCode)
@@ -145,9 +151,9 @@ public partial class MapRenderer : Node2D
         QueueRedraw();
     }
 
-    private void RebuildSurface(int regionCount)
+    private void RebuildSurface()
     {
-        if (regionCount <= 0)
+        if (_width <= 0 || _height <= 0)
         {
             _width = 0;
             _height = 0;
@@ -156,7 +162,6 @@ public partial class MapRenderer : Node2D
             return;
         }
 
-        (_width, _height) = DeriveDimensions(regionCount);
         var pixelWidth = Math.Max(_width * TileSize, TileSize);
         var pixelHeight = Math.Max(_height * TileSize, TileSize);
         _image = Image.CreateEmpty(pixelWidth, pixelHeight, false, Image.Format.Rgba8);
@@ -170,37 +175,5 @@ public partial class MapRenderer : Node2D
         _texture = ImageTexture.CreateFromImage(_image);
         _imageDirty = false;
         QueueRedraw();
-    }
-
-    private static (int width, int height) DeriveDimensions(int regionCount)
-    {
-        var bestWidth = regionCount;
-        var bestHeight = 1;
-        var bestDiff = regionCount - 1;
-
-        var maxFactor = (int)Math.Sqrt(regionCount);
-        for (var candidate = 1; candidate <= maxFactor; candidate++)
-        {
-            if (regionCount % candidate != 0)
-            {
-                continue;
-            }
-
-            var other = regionCount / candidate;
-            var diff = Math.Abs(other - candidate);
-            if (diff < bestDiff)
-            {
-                bestDiff = diff;
-                bestWidth = Math.Max(other, candidate);
-                bestHeight = Math.Min(other, candidate);
-            }
-        }
-
-        if (bestWidth < bestHeight)
-        {
-            (bestWidth, bestHeight) = (bestHeight, bestWidth);
-        }
-
-        return (bestWidth, bestHeight);
     }
 }

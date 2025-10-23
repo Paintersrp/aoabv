@@ -7,11 +7,11 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
 ```json
 {
   "t": 12,
+  "world": {"width": 64, "height": 32},
   "diff": {
     "biome": {"r:42": 3},
     "water": {"r:42": 120},
-    "soil":  {"r:42": -40},
-    "hazards": [{"region": 42, "drought": 1200, "flood": 0}]
+    "soil":  {"r:42": -40}
   },
   "highlights": [
     {"type": "hazard_flag", "region": 42, "info": {"kind": "drought", "level": 0.43}}
@@ -22,8 +22,9 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
 ```
 
 * `t` — Tick counter (`u64`).
-* `diff` — Sparse update maps keyed by `"r:<index>"`. Values are integers (biome codes) or signed deltas (water/soil). Hazards emit full snapshots.
-* `highlights` — Inspector hints. Every hazard highlight uses `{type:"hazard_flag", info:{kind, level}}`.
+* `world` — Snapshot of viewer metadata. Width/height describe the fixed grid dimensions for interpreting region indices.
+* `diff` — Sparse update maps keyed by `"r:<index>"`. Values are integers (biome codes) or signed deltas (water/soil). No additional keys are permitted.
+* `highlights` — Inspector hints. Hazard insight is surfaced exclusively via `{type:"hazard_flag", info:{kind, level}}` entries.
 * `chronicle` — Ordered list of short factual sentences per tick.
 * `era_end` — `true` once the long-term arc for the seed finishes (unused in v0.0).
 

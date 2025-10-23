@@ -38,7 +38,7 @@ The daemon exposes a WebSocket endpoint at `ws://localhost:8080/stream`, emittin
 ```bash
 cargo run -p simstep -- \
   --seed-file ./testdata/seeds/seed_wet_equator.json \
-  --ticks 120 \
+  --ticks 20 \
   --out ./target/tmp.ndjson
 diff -u ./target/tmp.ndjson ./testdata/golden/seed_wet_equator.ndjson
 # or: make golden
