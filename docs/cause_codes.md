@@ -5,6 +5,9 @@
 | `latitude_belt` | climate | Region biome assignment derived from its latitude band. Note explains the band label. |
 | `orographic_lift` | climate | Elevated region relative to neighbours; note reports `lift_km=<value>` in kilometers. |
 | `seasonality_variance` | climate | Seasonal variance applied to the region's moisture budget (range -1.0..1.0). |
+| `orogeny_belt` | geodynamics | Uplift event raised local terrain; note reports the signed metre delta. |
+| `volcanic_aerosol_pulse` | geodynamics | Volcanic eruption injected aerosols; note records `region` and `optical_depth`. |
+| `subsidence_deltas` | geodynamics | Subsidence lowered local terrain; note reports the signed metre delta. |
 | `soil_fertility_low` | ecology | Soil value fell below the fertility floor (2_500). |
 | `drought_flag` | ecology | Water level under 7_000 (scaled) after ecology adjustments. |
 | `flood_flag` | ecology | Water level above 8_500 (scaled) after ecology adjustments. |
