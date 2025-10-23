@@ -148,7 +148,7 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
         diff.record_cause(Entry::new(
             format!("region:{}/biome", region.id),
             Code::OrographicLift,
-            Some(format!("{:.3}", orographic_lift)),
+            Some(format!("lift_km={:.3}", orographic_lift)),
         ));
     }
 
@@ -307,8 +307,68 @@ mod tests {
         let lift_note = lift_entry
             .note
             .as_ref()
-            .and_then(|note| note.parse::<f64>().ok())
-            .expect("lift note to be numeric");
+            .and_then(|note| note.strip_prefix("lift_km="))
+            .and_then(|value| value.parse::<f64>().ok())
+            .expect("lift note to include lift_km= prefix with numeric value");
         assert!(lift_note > 0.0, "expected positive lift, got {}", lift_note);
+    }
+
+    #[test]
+    fn orographic_lift_cause_is_deterministic() {
+        let regions = vec![
+            Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 200,
+                latitude_deg: 10.0,
+                biome: 1,
+                water: 4_800,
+                soil: 5_200,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 1,
+                x: 1,
+                y: 0,
+                elevation_m: 1_800,
+                latitude_deg: 12.0,
+                biome: 1,
+                water: 4_900,
+                soil: 5_100,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 2,
+                x: 0,
+                y: 1,
+                elevation_m: 300,
+                latitude_deg: 8.0,
+                biome: 1,
+                water: 5_000,
+                soil: 5_000,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 3,
+                x: 1,
+                y: 1,
+                elevation_m: 350,
+                latitude_deg: 9.5,
+                biome: 1,
+                water: 4_950,
+                soil: 5_050,
+                hazards: Hazards::default(),
+            },
+        ];
+
+        let world = World::new(99, 2, 2, regions);
+        let mut rng_a = Stream::from(world.seed, STAGE, 4);
+        let mut rng_b = Stream::from(world.seed, STAGE, 4);
+
+        let diff_a = update(&world, &mut rng_a).expect("first run succeeds");
+        let diff_b = update(&world, &mut rng_b).expect("second run succeeds");
+
+        assert_eq!(diff_a.causes, diff_b.causes);
     }
 }

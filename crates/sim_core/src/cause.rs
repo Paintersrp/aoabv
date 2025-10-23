@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Canonical cause code for simulation diagnostics.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Code {
     LatitudeBelt,
