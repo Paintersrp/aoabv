@@ -37,25 +37,25 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub biome: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
-    pub water: BTreeMap<String, i32>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
-    pub soil: BTreeMap<String, i32>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub insolation: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub tide_envelope: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub elevation: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub soil: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub water: BTreeMap<String, i32>,
 }
 
 impl FrameDiff {
     fn is_empty(&self) -> bool {
         self.biome.is_empty()
-            && self.water.is_empty()
-            && self.soil.is_empty()
             && self.insolation.is_empty()
             && self.tide_envelope.is_empty()
             && self.elevation.is_empty()
+            && self.soil.is_empty()
+            && self.water.is_empty()
     }
 }
 
@@ -93,16 +93,6 @@ pub fn make_frame(
             .biome
             .insert(World::region_key(change.region as usize), change.biome);
     }
-    for delta in diff.water {
-        frame_diff
-            .water
-            .insert(World::region_key(delta.region as usize), delta.delta);
-    }
-    for delta in diff.soil {
-        frame_diff
-            .soil
-            .insert(World::region_key(delta.region as usize), delta.delta);
-    }
     for value in diff.insolation {
         frame_diff
             .insolation
@@ -117,6 +107,16 @@ pub fn make_frame(
         frame_diff
             .elevation
             .insert(World::region_key(value.region as usize), value.value);
+    }
+    for delta in diff.soil {
+        frame_diff
+            .soil
+            .insert(World::region_key(delta.region as usize), delta.delta);
+    }
+    for delta in diff.water {
+        frame_diff
+            .water
+            .insert(World::region_key(delta.region as usize), delta.delta);
     }
 
     Frame {
