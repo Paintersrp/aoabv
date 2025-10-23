@@ -14,6 +14,8 @@ pub struct Diff {
     pub insolation: Vec<ScalarValue>,
     pub tide_envelope: Vec<ScalarValue>,
     pub elevation: Vec<ScalarValue>,
+    pub temperature: Vec<ScalarValue>,
+    pub precipitation: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
     pub causes: Vec<Entry>,
 }
@@ -47,6 +49,14 @@ impl Diff {
 
     pub fn record_elevation(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.elevation, region_index as u32, value);
+    }
+
+    pub fn record_temperature(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.temperature, region_index as u32, value);
+    }
+
+    pub fn record_precipitation(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.precipitation, region_index as u32, value);
     }
 
     pub fn record_hazard(&mut self, region_index: usize, drought: u16, flood: u16) {
@@ -113,6 +123,12 @@ impl Diff {
         for scalar in &other.elevation {
             Self::set_scalar_value(&mut self.elevation, scalar.region, scalar.value);
         }
+        for scalar in &other.temperature {
+            Self::set_scalar_value(&mut self.temperature, scalar.region, scalar.value);
+        }
+        for scalar in &other.precipitation {
+            Self::set_scalar_value(&mut self.precipitation, scalar.region, scalar.value);
+        }
         for hazard in &other.hazards {
             self.record_hazard(hazard.region as usize, hazard.drought, hazard.flood);
         }
@@ -132,6 +148,8 @@ impl Diff {
             && self.insolation.is_empty()
             && self.tide_envelope.is_empty()
             && self.elevation.is_empty()
+            && self.temperature.is_empty()
+            && self.precipitation.is_empty()
             && self.hazards.is_empty()
             && self.causes.is_empty()
     }
@@ -216,6 +234,12 @@ impl Serialize for Diff {
         if !self.elevation.is_empty() {
             field_count += 1;
         }
+        if !self.temperature.is_empty() {
+            field_count += 1;
+        }
+        if !self.precipitation.is_empty() {
+            field_count += 1;
+        }
         if !self.hazards.is_empty() {
             field_count += 1;
         }
@@ -237,6 +261,12 @@ impl Serialize for Diff {
         }
         if !self.elevation.is_empty() {
             state.serialize_field("elevation", &ScalarValues(&self.elevation))?;
+        }
+        if !self.temperature.is_empty() {
+            state.serialize_field("temp", &ScalarValues(&self.temperature))?;
+        }
+        if !self.precipitation.is_empty() {
+            state.serialize_field("precip", &ScalarValues(&self.precipitation))?;
         }
         if !self.hazards.is_empty() {
             state.serialize_field("hazards", &self.hazards)?;

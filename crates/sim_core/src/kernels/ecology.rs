@@ -175,6 +175,8 @@ mod tests {
                 biome: 5,
                 water: 2_000,
                 soil: 2_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: crate::world::Hazards::default(),
             }],
         );
@@ -205,6 +207,8 @@ mod tests {
                     biome,
                     water,
                     soil,
+                    temperature_tenths_c: 0,
+                    precipitation_mm: 0,
                     hazards: Hazards::default(),
                 }],
             );
@@ -257,6 +261,8 @@ mod tests {
                 biome: 5,
                 water: 8_500,
                 soil: 7_500,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: world::Hazards {
                     drought: 0,
                     flood: 6_000,

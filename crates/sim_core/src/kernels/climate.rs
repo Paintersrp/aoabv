@@ -222,6 +222,8 @@ mod tests {
                 biome: u8::MAX, // ensure every case records a biome diff
                 water: 5_000,
                 soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             })
             .collect();
@@ -278,6 +280,8 @@ mod tests {
                 biome: 0,
                 water: 5_000,
                 soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -289,6 +293,8 @@ mod tests {
                 biome: 0,
                 water: 5_000,
                 soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -300,6 +306,8 @@ mod tests {
                 biome: 0,
                 water: 5_000,
                 soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
         ];
@@ -333,6 +341,8 @@ mod tests {
                 biome: 1,
                 water: 4_800,
                 soil: 5_200,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -344,6 +354,8 @@ mod tests {
                 biome: 1,
                 water: 4_900,
                 soil: 5_100,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -355,6 +367,8 @@ mod tests {
                 biome: 1,
                 water: 5_000,
                 soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -366,6 +380,8 @@ mod tests {
                 biome: 1,
                 water: 4_950,
                 soil: 5_050,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
         ];

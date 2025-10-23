@@ -71,6 +71,8 @@ pub fn build_world(seed: &Seed, world_seed_override: Option<u64>) -> World {
                 biome: 0,
                 water,
                 soil,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             });
             id += 1;

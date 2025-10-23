@@ -1,8 +1,13 @@
 use crate::diff::Diff;
 use crate::fixed::{
-    clamp_biome_index, clamp_hazard_meter, commit_resource_delta, SOIL_MAX, WATER_MAX,
+    clamp_biome_index, clamp_hazard_meter, clamp_i16, clamp_u16, commit_resource_delta, SOIL_MAX,
+    WATER_MAX,
 };
 use crate::world::World;
+
+const TEMP_MIN_TENTHS_C: i16 = -500;
+const TEMP_MAX_TENTHS_C: i16 = 500;
+const PRECIP_MAX_MM: u16 = 5_000;
 
 pub fn apply(world: &mut World, mut diff: Diff) {
     diff.biome.sort_by_key(|change| change.region);
@@ -11,6 +16,8 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.insolation.sort_by_key(|value| value.region);
     diff.tide_envelope.sort_by_key(|value| value.region);
     diff.elevation.sort_by_key(|value| value.region);
+    diff.temperature.sort_by_key(|value| value.region);
+    diff.precipitation.sort_by_key(|value| value.region);
     diff.hazards.sort_by_key(|hazard| hazard.region);
 
     for change in diff.biome {
@@ -34,6 +41,19 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     for value in diff.elevation {
         if let Some(region) = world.regions.get_mut(value.region as usize) {
             region.elevation_m = value.value;
+        }
+    }
+
+    for value in diff.temperature {
+        if let Some(region) = world.regions.get_mut(value.region as usize) {
+            region.temperature_tenths_c =
+                clamp_i16(value.value, TEMP_MIN_TENTHS_C, TEMP_MAX_TENTHS_C);
+        }
+    }
+
+    for value in diff.precipitation {
+        if let Some(region) = world.regions.get_mut(value.region as usize) {
+            region.precipitation_mm = clamp_u16(value.value, 0, PRECIP_MAX_MM);
         }
     }
 
@@ -62,6 +82,8 @@ mod tests {
                 biome: 1,
                 water: 1_000,
                 soil: 9_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -73,6 +95,8 @@ mod tests {
                 biome: 2,
                 water: 5_000,
                 soil: 100,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -84,6 +108,8 @@ mod tests {
                 biome: 3,
                 water: 9_900,
                 soil: 6_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -95,6 +121,8 @@ mod tests {
                 biome: 4,
                 water: 100,
                 soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
                 hazards: Hazards::default(),
             },
         ];
@@ -213,6 +241,42 @@ mod tests {
                 value: 40,
             },
         ];
+        unsorted_diff.temperature = vec![
+            ScalarValue {
+                region: 3,
+                value: 1_000,
+            },
+            ScalarValue {
+                region: 0,
+                value: 150,
+            },
+            ScalarValue {
+                region: 2,
+                value: 375,
+            },
+            ScalarValue {
+                region: 1,
+                value: -700,
+            },
+        ];
+        unsorted_diff.precipitation = vec![
+            ScalarValue {
+                region: 2,
+                value: 6_000,
+            },
+            ScalarValue {
+                region: 0,
+                value: -50,
+            },
+            ScalarValue {
+                region: 3,
+                value: 4_500,
+            },
+            ScalarValue {
+                region: 1,
+                value: 200,
+            },
+        ];
         unsorted_diff.hazards = vec![
             HazardEvent {
                 region: 3,
@@ -243,6 +307,8 @@ mod tests {
         sorted_diff.insolation.sort_by_key(|value| value.region);
         sorted_diff.tide_envelope.sort_by_key(|value| value.region);
         sorted_diff.elevation.sort_by_key(|value| value.region);
+        sorted_diff.temperature.sort_by_key(|value| value.region);
+        sorted_diff.precipitation.sort_by_key(|value| value.region);
         sorted_diff.hazards.sort_by_key(|hazard| hazard.region);
 
         let mut world_from_unsorted = test_world();
@@ -260,6 +326,8 @@ mod tests {
             assert_eq!(left.biome, right.biome);
             assert_eq!(left.water, right.water);
             assert_eq!(left.soil, right.soil);
+            assert_eq!(left.temperature_tenths_c, right.temperature_tenths_c);
+            assert_eq!(left.precipitation_mm, right.precipitation_mm);
             assert_eq!(left.hazards.drought, right.hazards.drought);
             assert_eq!(left.hazards.flood, right.hazards.flood);
         }
@@ -269,6 +337,8 @@ mod tests {
         assert_eq!(region0.water, crate::fixed::WATER_MAX);
         assert_eq!(region0.soil, 0);
         assert_eq!(region0.elevation_m, -250);
+        assert_eq!(region0.temperature_tenths_c, 150);
+        assert_eq!(region0.precipitation_mm, 0);
         assert_eq!(region0.hazards.drought, 5);
         assert_eq!(region0.hazards.flood, 700);
 
@@ -277,6 +347,8 @@ mod tests {
         assert_eq!(region1.water, 0);
         assert_eq!(region1.soil, 300);
         assert_eq!(region1.elevation_m, 40);
+        assert_eq!(region1.temperature_tenths_c, -500);
+        assert_eq!(region1.precipitation_mm, 200);
         assert_eq!(region1.hazards.drought, 250);
         assert_eq!(region1.hazards.flood, crate::fixed::WATER_MAX);
 
@@ -285,6 +357,8 @@ mod tests {
         assert_eq!(region2.water, crate::fixed::WATER_MAX);
         assert_eq!(region2.soil, crate::fixed::SOIL_MAX);
         assert_eq!(region2.elevation_m, 1_500);
+        assert_eq!(region2.temperature_tenths_c, 375);
+        assert_eq!(region2.precipitation_mm, 5_000);
         assert_eq!(region2.hazards.drought, crate::fixed::WATER_MAX);
         assert_eq!(region2.hazards.flood, crate::fixed::WATER_MAX);
 
@@ -292,6 +366,8 @@ mod tests {
         assert_eq!(region3.biome, 128);
         assert_eq!(region3.water, 0);
         assert_eq!(region3.soil, 4_800);
+        assert_eq!(region3.temperature_tenths_c, 500);
+        assert_eq!(region3.precipitation_mm, 4_500);
         assert_eq!(region3.hazards.drought, crate::fixed::WATER_MAX);
         assert_eq!(region3.hazards.flood, 200);
     }

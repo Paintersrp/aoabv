@@ -108,6 +108,8 @@ mod tests {
             biome: 0,
             water: 5_000,
             soil: 5_000,
+            temperature_tenths_c: 0,
+            precipitation_mm: 0,
             hazards: Hazards::default(),
         }];
         World::new(0, 1, 1, regions)

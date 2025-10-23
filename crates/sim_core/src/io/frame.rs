@@ -43,6 +43,10 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub elevation: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub temp: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub precip: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub soil: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub water: BTreeMap<String, i32>,
@@ -54,6 +58,8 @@ impl FrameDiff {
             && self.insolation.is_empty()
             && self.tide_envelope.is_empty()
             && self.elevation.is_empty()
+            && self.temp.is_empty()
+            && self.precip.is_empty()
             && self.soil.is_empty()
             && self.water.is_empty()
     }
@@ -106,6 +112,16 @@ pub fn make_frame(
     for value in diff.elevation {
         frame_diff
             .elevation
+            .insert(World::region_key(value.region as usize), value.value);
+    }
+    for value in diff.temperature {
+        frame_diff
+            .temp
+            .insert(World::region_key(value.region as usize), value.value);
+    }
+    for value in diff.precipitation {
+        frame_diff
+            .precip
             .insert(World::region_key(value.region as usize), value.value);
     }
     for delta in diff.soil {
@@ -180,6 +196,8 @@ mod tests {
         diff.record_insolation(0, 12_345);
         diff.record_tide_envelope(1, -234);
         diff.record_elevation(2, 987);
+        diff.record_temperature(3, 156);
+        diff.record_precipitation(0, 2_345);
 
         let frame = make_frame(5, diff, Vec::new(), Vec::new(), false, 8, 4);
         let json_line = frame.to_ndjson().expect("frame serializes");
@@ -208,5 +226,19 @@ mod tests {
             .as_object()
             .expect("elevation is object");
         assert_eq!(elevation.get("r:2").and_then(|v| v.as_i64()), Some(987));
+
+        let temp = diff_map
+            .get("temp")
+            .expect("temp map present")
+            .as_object()
+            .expect("temp is object");
+        assert_eq!(temp.get("r:3").and_then(|v| v.as_i64()), Some(156));
+
+        let precip = diff_map
+            .get("precip")
+            .expect("precip map present")
+            .as_object()
+            .expect("precip is object");
+        assert_eq!(precip.get("r:0").and_then(|v| v.as_i64()), Some(2_345));
     }
 }
