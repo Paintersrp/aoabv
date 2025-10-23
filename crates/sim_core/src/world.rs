@@ -27,6 +27,8 @@ pub struct Region {
     pub biome: u8,
     pub water: u16,
     pub soil: u16,
+    pub temperature_tenths_c: i16,
+    pub precipitation_mm: u16,
     pub hazards: Hazards,
 }
 

@@ -12,7 +12,7 @@ use diff::Diff;
 use fixed::WATER_MAX;
 use io::frame::Highlight;
 use kernels::{
-    astronomy, climate,
+    astronomy, atmosphere, climate,
     ecology::{self, DROUGHT_ALERT_THRESHOLD, FLOOD_ALERT_THRESHOLD},
     geodynamics,
 };
@@ -52,6 +52,13 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     chronicle.append(&mut geodynamics_chronicle);
     aggregate_diff.merge(&geodynamics_diff);
     apply(world, geodynamics_diff);
+
+    // Atmospheric energy balance precedes climate classification.
+    let mut atmosphere_rng = climate_stage_rng.derive(stream_label(atmosphere::STAGE));
+    let atmosphere_diff = atmosphere::update(world, &mut atmosphere_rng)?;
+    aggregate_diff.merge(&atmosphere_diff);
+    apply(world, atmosphere_diff);
+    chronicle.push("Hadley cells formed; monsoon rains swept low latitudes.".to_string());
 
     // Climate kernel.
     let mut climate_rng = climate_stage_rng.derive(stream_label("kernel:climate/core"));

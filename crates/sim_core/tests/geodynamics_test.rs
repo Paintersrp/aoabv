@@ -19,6 +19,8 @@ fn sample_world() -> World {
             biome: 3,
             water: 5_000,
             soil: 5_000,
+            temperature_tenths_c: 0,
+            precipitation_mm: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -30,6 +32,8 @@ fn sample_world() -> World {
             biome: 4,
             water: 5_100,
             soil: 4_900,
+            temperature_tenths_c: 0,
+            precipitation_mm: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -41,6 +45,8 @@ fn sample_world() -> World {
             biome: 2,
             water: 4_950,
             soil: 5_050,
+            temperature_tenths_c: 0,
+            precipitation_mm: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -52,6 +58,8 @@ fn sample_world() -> World {
             biome: 1,
             water: 4_800,
             soil: 5_200,
+            temperature_tenths_c: 0,
+            precipitation_mm: 0,
             hazards: Hazards::default(),
         },
     ];
