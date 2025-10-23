@@ -52,7 +52,9 @@ fn main() -> Result<()> {
         let (diff, chronicle) = tick_once(&mut world, seed, next_tick)?;
         let highlights = collect_highlights(&world, &diff);
 
-        let frame = make_frame(next_tick, diff, highlights, chronicle, false);
+        let width = world.width;
+        let height = world.height;
+        let frame = make_frame(next_tick, diff, highlights, chronicle, false, width, height);
         let line = frame.to_ndjson()?;
         writer.write_all(line.as_bytes())?;
     }

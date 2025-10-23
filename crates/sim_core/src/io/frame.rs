@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::diff::{Diff, HazardEvent};
+use crate::diff::Diff;
 use crate::world::World;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -40,22 +40,24 @@ pub struct FrameDiff {
     pub water: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub soil: BTreeMap<String, i32>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub hazards: Vec<HazardEvent>,
 }
 
 impl FrameDiff {
     fn is_empty(&self) -> bool {
-        self.biome.is_empty()
-            && self.water.is_empty()
-            && self.soil.is_empty()
-            && self.hazards.is_empty()
+        self.biome.is_empty() && self.water.is_empty() && self.soil.is_empty()
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct FrameWorldMeta {
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Frame {
     pub t: u64,
+    pub world: FrameWorldMeta,
     #[serde(skip_serializing_if = "FrameDiff::is_empty", default)]
     pub diff: FrameDiff,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
@@ -71,6 +73,8 @@ pub fn make_frame(
     highlights: Vec<Highlight>,
     chronicle: Vec<String>,
     era_end: bool,
+    width: u32,
+    height: u32,
 ) -> Frame {
     let mut frame_diff = FrameDiff::default();
     for change in diff.biome {
@@ -88,11 +92,11 @@ pub fn make_frame(
             .soil
             .insert(World::region_key(delta.region as usize), delta.delta);
     }
-    frame_diff.hazards = diff.hazards;
 
     Frame {
         t,
         diff: frame_diff,
+        world: FrameWorldMeta { width, height },
         highlights,
         chronicle,
         era_end,
@@ -104,5 +108,43 @@ impl Frame {
         let mut json = serde_json::to_string(self)?;
         json.push('\n');
         Ok(json)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_diff_excludes_hazards_key() {
+        let mut diff = Diff::default();
+        diff.record_biome(0, 3);
+        diff.record_water_delta(1, 5);
+        diff.record_soil_delta(2, -7);
+        diff.record_hazard(0, 4_500, 0);
+
+        let frame = make_frame(1, diff, Vec::new(), Vec::new(), false, 8, 4);
+        let json_line = frame.to_ndjson().expect("frame serializes");
+        let value: serde_json::Value =
+            serde_json::from_str(json_line.trim_end()).expect("valid json");
+        let diff_value = value.get("diff").expect("diff field present");
+        let diff_map = diff_value.as_object().expect("diff is object");
+
+        for key in diff_map.keys() {
+            assert!(key == "biome" || key == "water" || key == "soil");
+        }
+        assert!(!diff_map.contains_key("hazards"));
+    }
+
+    #[test]
+    fn frame_world_metadata_present() {
+        let frame = make_frame(0, Diff::default(), Vec::new(), Vec::new(), false, 12, 6);
+        let json_line = frame.to_ndjson().expect("frame serializes");
+        let value: serde_json::Value =
+            serde_json::from_str(json_line.trim_end()).expect("valid json");
+        let world = value.get("world").expect("world metadata present");
+        let world_map = world.as_object().expect("world is object");
+        assert_eq!(world_map.get("width").and_then(|v| v.as_u64()), Some(12));
+        assert_eq!(world_map.get("height").and_then(|v| v.as_u64()), Some(6));
     }
 }

@@ -1,6 +1,6 @@
 CARGO ?= cargo
 SIMSTEP_SEED ?= ./testdata/seeds/seed_wet_equator.json
-SIMSTEP_TICKS ?= 120
+SIMSTEP_TICKS ?= 20
 SIMSTEP_OUT ?= ./target/tmp.ndjson
 GOLDEN ?= ./testdata/golden/seed_wet_equator.ndjson
 

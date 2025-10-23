@@ -128,7 +128,11 @@ async fn main() -> Result<()> {
                     Ok((diff, chronicle)) => {
                         let highlights = collect_highlights(&world, &diff);
                         let causes = diff.causes.clone();
-                        let frame = make_frame(next_tick, diff, highlights, chronicle, false);
+                        let width = world.width;
+                        let height = world.height;
+                        let frame = make_frame(
+                            next_tick, diff, highlights, chronicle, false, width, height,
+                        );
                         match frame.to_ndjson() {
                             Ok(line) => Ok((line, causes, next_tick)),
                             Err(err) => Err(err.into()),
