@@ -9,7 +9,12 @@ This workspace contains the deterministic Rust simulation stack for *Ages of a B
 * `simstep` — batch runner that executes a fixed number of ticks and emits NDJSON to disk for golden comparisons.
 * `viewer_godot` — Godot 4.5 project that attaches to the daemon and visualises the grid.
 
-The NDJSON frame, cause code, and systems contracts that bind these components together are captured in [`/docs`](docs/).
+The NDJSON frame, cause code, and systems contracts that bind these components together are captured in [`/docs`](docs/). Recent kernel integrations extend the frame payload with:
+
+* `world` metadata describing the fixed grid dimensions so the viewer can position region indices deterministically.
+* New sparse `diff` maps for `insolation`, `tide_envelope`, and `elevation` alongside the existing `biome`, `soil`, and `water` deltas.
+
+See [`/docs/systems_contract.md`](docs/systems_contract.md) for the authoritative schema.
 
 ## Toolchain
 
@@ -44,7 +49,17 @@ diff -u ./target/tmp.ndjson ./testdata/golden/seed_wet_equator.ndjson
 # or: make golden
 ```
 
-Use these commands whenever regenerating golden fixtures; include a brief note in commit messages describing why they changed.
+Use these commands whenever regenerating golden fixtures; include a brief note in commit messages describing why they changed. When verifying the new NDJSON fields, inspect the diff output for the expected `world`, `insolation`, `tide_envelope`, and `elevation` entries.
+
+### Deterministic verification ledger
+
+Once diffs look correct, record the canonical hash so the verification log stays reproducible:
+
+```bash
+shasum -a 256 ./testdata/golden/seed_wet_equator.ndjson
+```
+
+Log the resulting digest and the command invocation in [`docs/v0.0_verification.md`](docs/v0.0_verification.md) to keep the deterministic workflow auditable.
 
 ### Launch the Godot viewer
 
@@ -71,7 +86,7 @@ Simulation stages derive deterministic RNG substreams from `(seed, stage_id, tic
 * [`/docs/cause_codes.md`](docs/cause_codes.md) — canonical list of cause codes emitted by the simulation.
 * [`CHANGELOG.md`](CHANGELOG.md) — release notes; update this file with each tagged release.
 * [`/docs/roadmap.md`](docs/roadmap.md) — release timeline, milestones, and deferred features.
-* [`/docs/v0.0_verification.md`](docs/v0.0_verification.md) — verification ledger for v0.0 runs, including command history and deterministic hashes.
+* [`/docs/v0.0_verification.md`](docs/v0.0_verification.md) — verification ledger for v0.0 runs, including command history, NDJSON field checks, and deterministic hashes.
 
 ## Repository layout
 
