@@ -9,6 +9,9 @@ pub struct Diff {
     pub biome: Vec<BiomeChange>,
     pub water: Vec<ResourceDelta>,
     pub soil: Vec<ResourceDelta>,
+    pub insolation: Vec<ScalarValue>,
+    pub tide_envelope: Vec<ScalarValue>,
+    pub elevation: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
     pub causes: Vec<Entry>,
 }
@@ -30,6 +33,18 @@ impl Diff {
             return;
         }
         Self::insert_delta(&mut self.soil, region_index as u32, delta);
+    }
+
+    pub fn record_insolation(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.insolation, region_index as u32, value);
+    }
+
+    pub fn record_tide_envelope(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.tide_envelope, region_index as u32, value);
+    }
+
+    pub fn record_elevation(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.elevation, region_index as u32, value);
     }
 
     pub fn record_hazard(&mut self, region_index: usize, drought: u16, flood: u16) {
@@ -71,6 +86,15 @@ impl Diff {
         for delta in &other.soil {
             Self::insert_delta(&mut self.soil, delta.region, delta.delta);
         }
+        for scalar in &other.insolation {
+            Self::set_scalar_value(&mut self.insolation, scalar.region, scalar.value);
+        }
+        for scalar in &other.tide_envelope {
+            Self::set_scalar_value(&mut self.tide_envelope, scalar.region, scalar.value);
+        }
+        for scalar in &other.elevation {
+            Self::set_scalar_value(&mut self.elevation, scalar.region, scalar.value);
+        }
         for hazard in &other.hazards {
             self.record_hazard(hazard.region as usize, hazard.drought, hazard.flood);
         }
@@ -85,6 +109,9 @@ impl Diff {
         self.biome.is_empty()
             && self.water.is_empty()
             && self.soil.is_empty()
+            && self.insolation.is_empty()
+            && self.tide_envelope.is_empty()
+            && self.elevation.is_empty()
             && self.hazards.is_empty()
             && self.causes.is_empty()
     }
@@ -111,6 +138,13 @@ impl Diff {
             Err(idx) => target.insert(idx, ResourceDelta { region, delta }),
         }
     }
+
+    fn set_scalar_value(target: &mut Vec<ScalarValue>, region: u32, value: i32) {
+        match target.binary_search_by_key(&region, |entry| entry.region) {
+            Ok(idx) => target[idx].value = value,
+            Err(idx) => target.insert(idx, ScalarValue { region, value }),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -123,6 +157,12 @@ pub struct BiomeChange {
 pub struct ResourceDelta {
     pub region: u32,
     pub delta: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScalarValue {
+    pub region: u32,
+    pub value: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -147,6 +187,15 @@ impl Serialize for Diff {
         if !self.soil.is_empty() {
             field_count += 1;
         }
+        if !self.insolation.is_empty() {
+            field_count += 1;
+        }
+        if !self.tide_envelope.is_empty() {
+            field_count += 1;
+        }
+        if !self.elevation.is_empty() {
+            field_count += 1;
+        }
         if !self.hazards.is_empty() {
             field_count += 1;
         }
@@ -159,6 +208,15 @@ impl Serialize for Diff {
         }
         if !self.soil.is_empty() {
             state.serialize_field("soil", &ResourceDeltas(&self.soil))?;
+        }
+        if !self.insolation.is_empty() {
+            state.serialize_field("insolation", &ScalarValues(&self.insolation))?;
+        }
+        if !self.tide_envelope.is_empty() {
+            state.serialize_field("tide_envelope", &ScalarValues(&self.tide_envelope))?;
+        }
+        if !self.elevation.is_empty() {
+            state.serialize_field("elevation", &ScalarValues(&self.elevation))?;
         }
         if !self.hazards.is_empty() {
             state.serialize_field("hazards", &self.hazards)?;
@@ -194,6 +252,22 @@ impl<'a> Serialize for ResourceDeltas<'a> {
         for delta in self.0 {
             let key = World::region_key(delta.region as usize);
             map.serialize_entry(&key, &delta.delta)?;
+        }
+        map.end()
+    }
+}
+
+struct ScalarValues<'a>(&'a [ScalarValue]);
+
+impl<'a> Serialize for ScalarValues<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for value in self.0 {
+            let key = World::region_key(value.region as usize);
+            map.serialize_entry(&key, &value.value)?;
         }
         map.end()
     }
