@@ -78,3 +78,9 @@ Cause codes are emitted as standalone NDJSON lines when using the `--cause-log` 
 ```
 
 Codes must appear in [`docs/cause_codes.md`](cause_codes.md). When adding new fields to frames or seeds, update this contract file and bump the viewer accordingly.
+## Kernel orchestration and modular layout
+
+* The simulation driver delegates stage execution through `crates/sim_core/src/schedule::run_kernel`, which hands each kernel a deterministic RNG substream and applies the returned diff.
+* Kernel entry points return `schedule::KernelRun` so they own their chronicle lines and highlights, keeping `tick_once` focused on sequencing.
+* Climate and atmosphere logic now live in focused submodules (`crates/sim_core/src/kernels/climate/`, `crates/sim_core/src/kernels/atmosphere/`) to preserve single-responsibility boundaries as the codebase grows.
+
