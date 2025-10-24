@@ -51,7 +51,7 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
         ));
         diff.record_cause(Entry::new(
             format!("region:{}/biome", region.id),
-            Code::SeasonalityVariance,
+            Code::SeasonalShift,
             Some(format!("{:.3}", seasonal_shift)),
         ));
         diff.record_cause(Entry::new(

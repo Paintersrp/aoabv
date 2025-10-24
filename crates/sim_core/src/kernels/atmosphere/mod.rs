@@ -1,7 +1,7 @@
 mod humidity;
 mod orography;
 mod precipitation;
-mod seasonality;
+pub(crate) mod seasonality;
 
 use anyhow::Result;
 
@@ -29,8 +29,8 @@ const PRECIP_MULTIPLIER_MAX: f64 = 3.0;
 const RAIN_SHADOW_MAX: f64 = 0.75;
 const PI: f64 = 3.14159265358979323846264338327950288;
 const TAU: f64 = 6.28318530717958647692528676655900577;
-const SEASON_PERIOD_TICKS: f64 = 12.0;
-const SEASONAL_INSOLATION_AMPLITUDE: f64 = 0.18;
+pub(crate) const SEASON_PERIOD_TICKS: u64 = 4;
+pub(crate) const SEASONAL_INSOLATION_AMPLITUDE: f64 = 0.18;
 const HADLEY_DRIFT_MAX_DEGREES: f64 = 5.0;
 const SEASONAL_SCALAR_EPSILON: f64 = 1e-9;
 
@@ -126,7 +126,7 @@ mod tests {
             },
         ];
         let mut world = World::new(7, 3, 1, regions);
-        world.tick = 3;
+        world.tick = 2;
         world.climate.last_insolation_tenths.fill(12_800);
         for region in &mut world.regions {
             region.precipitation_mm = 1_200;
@@ -149,7 +149,7 @@ mod tests {
         assert!(diff
             .causes
             .iter()
-            .any(|entry| entry.code == Code::SeasonalityVariance));
+            .any(|entry| entry.code == Code::SeasonalShift));
         assert!(diff
             .causes
             .iter()
@@ -251,8 +251,8 @@ mod tests {
     }
 
     #[test]
-    fn seasonal_scalar_matches_expected_phases() {
-        let checkpoints = [(0, 0.0), (3, 1.0), (6, 0.0), (9, -1.0), (12, 0.0)];
+    fn seasonal_scalar_matches_quarter_cycle() {
+        let checkpoints = [(0, 0.0), (1, 1.0), (2, 0.0), (3, -1.0), (4, 0.0)];
         for (tick, expected) in checkpoints {
             let actual = seasonality::scalar_for_tick(tick);
             assert!(
@@ -263,7 +263,63 @@ mod tests {
                 actual
             );
         }
-        assert!((seasonality::scalar_for_tick(0) - seasonality::scalar_for_tick(12)).abs() < 1e-9);
+        assert!((seasonality::scalar_for_tick(0) - seasonality::scalar_for_tick(4)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn seasonal_outputs_reproduce_for_identical_seed_and_tick() {
+        let regions = vec![
+            Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 150,
+                latitude_deg: 12.0,
+                biome: 0,
+                water: 8_200,
+                soil: 6_400,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 1,
+                x: 1,
+                y: 0,
+                elevation_m: 1_200,
+                latitude_deg: 24.0,
+                biome: 0,
+                water: 7_900,
+                soil: 6_100,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 355,
+                freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
+                hazards: Hazards::default(),
+            },
+        ];
+
+        let mut world_a = World::new(19, 2, 1, regions.clone());
+        world_a.tick = 5;
+        world_a.climate.last_insolation_tenths = vec![12_200, 12_260];
+
+        let world_b = world_a.clone();
+
+        let mut rng_a = Stream::from(world_a.seed, STAGE, 3);
+        let mut rng_b = Stream::from(world_b.seed, STAGE, 3);
+
+        let run_a = update(&world_a, &mut rng_a).expect("first pass reproducible");
+        let run_b = update(&world_b, &mut rng_b).expect("second pass reproducible");
+
+        assert_eq!(run_a.diff.temperature, run_b.diff.temperature);
+        assert_eq!(run_a.diff.precipitation, run_b.diff.precipitation);
+        assert_eq!(run_a.diff.humidity, run_b.diff.humidity);
+        assert_eq!(run_a.diff.causes, run_b.diff.causes);
+        assert_eq!(run_a.chronicle, run_b.chronicle);
     }
 
     proptest! {

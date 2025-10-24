@@ -71,7 +71,7 @@ pub fn tick_once(
         |world, rng| atmosphere::update(&*world, rng),
     )?;
     if !atmosphere_run.chronicle.is_empty() {
-        chronicle.push("Moist air rose along highlands; leeward valleys dried.".to_string());
+        chronicle.push("Hadley belt drifted northward under seasonal tilt.".to_string());
     }
     highlights.extend(atmosphere_run.highlights);
 

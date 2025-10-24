@@ -13,7 +13,7 @@ pub(super) struct SeasonalityContext {
 }
 
 pub(super) fn compute(world: &World) -> SeasonalityContext {
-    let scalar = seasonal_scalar(world.tick);
+    let scalar = seasonal_scalar(world.tick + 1);
     let insolation_bias = (1.0 + SEASONAL_INSOLATION_AMPLITUDE * scalar).clamp(
         1.0 - SEASONAL_INSOLATION_AMPLITUDE,
         1.0 + SEASONAL_INSOLATION_AMPLITUDE,
@@ -44,8 +44,7 @@ pub(super) fn has_seasonal_variation(value: f64) -> bool {
     value.abs() > SEASONAL_SCALAR_EPSILON
 }
 
-#[cfg(test)]
-pub(super) fn scalar_for_tick(tick: u64) -> f64 {
+pub(crate) fn scalar_for_tick(tick: u64) -> f64 {
     seasonal_scalar(tick)
 }
 
@@ -73,9 +72,10 @@ fn sin_series(angle: f64) -> f64 {
 }
 
 fn seasonal_scalar(tick: u64) -> f64 {
-    if SEASON_PERIOD_TICKS <= f64::EPSILON {
+    if SEASON_PERIOD_TICKS == 0 {
         return 0.0;
     }
-    let phase = (tick as f64 / SEASON_PERIOD_TICKS) * TAU;
+    let tick_in_cycle = (tick % SEASON_PERIOD_TICKS) as f64;
+    let phase = (tick_in_cycle / SEASON_PERIOD_TICKS as f64) * TAU;
     sin_series(phase)
 }

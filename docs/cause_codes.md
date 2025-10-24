@@ -6,7 +6,7 @@
 | `orographic_lift` | climate | Prevailing-wind uplift over steep windward slopes; note reports `gradient_km` and `multiplier`. |
 | `rain_shadow` | climate | Downwind moisture depletion from an upwind barrier; note reports `shadow_factor`. |
 | `humidity_transport` | climate | Atmospheric moisture mixed from prior precipitation, stored insolation, and orographic flow adjustments. |
-| `seasonality_variance` | climate | Seasonal variance applied to the region's moisture budget (range -1.0..1.0). |
+| `seasonal_shift` | climate | Seasonal sinusoid applied to regional temperature and precipitation (range -1.0..1.0). |
 | `hadley_cell` | climate | Hadley circulation strength for low-latitude energy balance; note records `strength`. |
 | `hadley_drift` | climate | Seasonal Hadley belt shift applied to effective latitude; note records `shift_deg`. |
 | `energy_balance_adjustment` | climate | Mean temperature baseline offset (tenths °C) queued by albedo reconciliation; note records `mean_tenths`. |
