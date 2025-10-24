@@ -8,7 +8,7 @@ use crate::schedule::KernelRun;
 use crate::world::World;
 
 pub const STAGE: &str = "kernel:cryosphere";
-pub const CHRONICLE_LINE: &str = "Polar ice advanced; albedo brightened the poles.";
+pub const CHRONICLE_LINE: &str = "Glacial melt raised coastal seas; albedo weakened.";
 
 const ALBEDO_FLOOR: i32 = 100;
 const ALBEDO_MAX_I32: i32 = ALBEDO_MAX as i32;
@@ -17,13 +17,16 @@ const ICE_ACCUM_PER_MM: f64 = 6.5;
 const ICE_MASS_SATURATION_KT: f64 = 60_000.0;
 const ICE_MASS_MAX_KT: f64 = 200_000.0;
 
-pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
+pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
     let mut chronicle = Vec::new();
     let mut ice_updates = 0usize;
     let mut freshwater_regions = 0usize;
+    let mut contributing_regions = 0usize;
+    let mut total_melt_mm = 0.0;
 
-    for (index, region) in world.regions.iter().enumerate() {
+    for index in 0..world.regions.len() {
+        let region = &world.regions[index];
         debug_assert_eq!(
             region.index(),
             index,
@@ -57,12 +60,18 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
         if next_ice_mass_i32 != region.ice_mass_kilotons as i32 {
             diff.record_ice_mass(index, next_ice_mass_i32);
             ice_updates += 1;
+            let delta_kt = next_ice_mass - existing_ice_mass;
+            diff.record_cause(Entry::new(
+                format!("region:{}/ice", region.id),
+                Code::IceMassVariation,
+                Some(format!("delta_kt={:+.1}", delta_kt)),
+            ));
         }
 
         let coverage = if next_ice_mass <= 0.0 {
             0.0
         } else {
-            next_ice_mass / (ICE_MASS_SATURATION_KT + next_ice_mass)
+            (next_ice_mass / ICE_MASS_SATURATION_KT).min(1.0)
         };
         let albedo_noise = rng.next_signed_unit() * 10.0;
         let mut next_albedo = (ALBEDO_FLOOR as f64
@@ -102,12 +111,30 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
             ));
             freshwater_regions += 1;
         }
+
+        let melt_mm = (-mass_balance).max(0.0);
+        if melt_mm > 0.0 {
+            total_melt_mm += melt_mm;
+            contributing_regions += 1;
+        }
     }
 
-    if ice_updates > 0 || freshwater_regions > 0 {
+    let sea_level_delta_mm = total_melt_mm.round() as i32;
+    if sea_level_delta_mm != 0 {
+        world
+            .climate
+            .add_sea_level_equivalent_mm(sea_level_delta_mm);
+        diff.record_cause(Entry::new(
+            "world:sea_level",
+            Code::SeaLevelContribution,
+            Some(format!("mm={}", sea_level_delta_mm)),
+        ));
+    }
+
+    if ice_updates > 0 || freshwater_regions > 0 || sea_level_delta_mm != 0 {
         chronicle.push(format!(
-            "Polar ice adjusted across {} regions; freshwater pulses in {} basins.",
-            ice_updates, freshwater_regions
+            "{} ({}, {} freshwater pulses, {} sea-level contributors).",
+            CHRONICLE_LINE, ice_updates, freshwater_regions, contributing_regions
         ));
     } else {
         chronicle.push(CHRONICLE_LINE.to_string());
@@ -162,10 +189,10 @@ mod tests {
                 hazards: Hazards::default(),
             },
         ];
-        let world = World::new(9, 2, 1, regions);
+        let mut world = World::new(9, 2, 1, regions);
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
-        let run = update(&world, &mut rng).expect("cryosphere update succeeds");
+        let run = update(&mut world, &mut rng).expect("cryosphere update succeeds");
         let diff = run.diff;
 
         assert!(
@@ -175,6 +202,12 @@ mod tests {
         assert!(
             !diff.freshwater_flux.is_empty(),
             "cryosphere should emit freshwater flux updates"
+        );
+        assert!(
+            diff.ice_mass
+                .iter()
+                .any(|entry| entry.region == 0 || entry.region == 1),
+            "ice mass updates expected"
         );
         assert!(
             diff.causes
@@ -194,6 +227,13 @@ mod tests {
                 .any(|entry| entry.code == Code::FreshwaterPulse),
             "freshwater cause expected"
         );
+        assert!(
+            diff.causes
+                .iter()
+                .any(|entry| entry.code == Code::IceMassVariation),
+            "ice variation cause expected"
+        );
+        assert!(world.climate.sea_level_equivalent_mm() >= 0);
         assert!(!run.chronicle.is_empty());
     }
 
@@ -215,12 +255,12 @@ mod tests {
             ice_mass_kilotons: 10_000,
             hazards: Hazards::default(),
         }];
-        let world = World::new(42, 1, 1, regions);
+        let mut world = World::new(42, 1, 1, regions);
         let mut rng_a = Stream::from(world.seed, STAGE, 3);
         let mut rng_b = Stream::from(world.seed, STAGE, 3);
 
-        let run_a = update(&world, &mut rng_a).expect("first run succeeds");
-        let run_b = update(&world, &mut rng_b).expect("second run succeeds");
+        let run_a = update(&mut world.clone(), &mut rng_a).expect("first run succeeds");
+        let run_b = update(&mut world, &mut rng_b).expect("second run succeeds");
 
         assert_eq!(run_a.diff.albedo, run_b.diff.albedo, "albedo deterministic");
         assert_eq!(
@@ -239,5 +279,52 @@ mod tests {
         for scalar in run_a.diff.ice_mass {
             assert!(scalar.value >= 0, "ice mass must remain non-negative");
         }
+    }
+
+    #[test]
+    fn melt_updates_sea_level_accumulator() {
+        let regions = vec![Region {
+            id: 0,
+            x: 0,
+            y: 0,
+            elevation_m: 0,
+            latitude_deg: 75.0,
+            biome: 0,
+            water: 5_000,
+            soil: 5_000,
+            temperature_tenths_c: 120,
+            precipitation_mm: 100,
+            albedo_milli: 500,
+            freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 5_000,
+            hazards: Hazards::default(),
+        }];
+
+        let mut world = World::new(5, 1, 1, regions);
+        let mut rng = Stream::from(world.seed, STAGE, 2);
+        let run = update(&mut world, &mut rng).expect("cryosphere update succeeds");
+
+        assert!(
+            world.climate.sea_level_equivalent_mm() > 0,
+            "sea level accumulator should record melt contributions"
+        );
+        assert!(
+            run.diff
+                .causes
+                .iter()
+                .any(|entry| entry.code == Code::SeaLevelContribution),
+            "sea level cause should be emitted"
+        );
+        assert!(
+            run.diff
+                .causes
+                .iter()
+                .any(|entry| entry.code == Code::IceMassVariation),
+            "ice mass variation cause should be emitted"
+        );
+        assert!(
+            !run.diff.ice_mass.is_empty(),
+            "ice mass diff should be recorded"
+        );
     }
 }

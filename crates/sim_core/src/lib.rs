@@ -80,7 +80,7 @@ pub fn tick_once(
         &mut aggregate_diff,
         &climate_stage_rng,
         cryosphere::STAGE,
-        |world, rng| cryosphere::update(&*world, rng),
+        |world, rng| cryosphere::update(world, rng),
     )?;
     chronicle.extend(cryosphere_run.chronicle);
     highlights.extend(cryosphere_run.highlights);

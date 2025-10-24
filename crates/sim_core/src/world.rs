@@ -80,6 +80,7 @@ pub struct ClimateState {
     pub temperature_baseline_tenths: Vec<i16>,
     pub last_albedo_milli: Vec<i32>,
     pub last_insolation_tenths: Vec<i32>,
+    pub sea_level_equivalent_mm: i32,
 }
 
 impl ClimateState {
@@ -94,6 +95,7 @@ impl ClimateState {
             temperature_baseline_tenths,
             last_albedo_milli,
             last_insolation_tenths,
+            sea_level_equivalent_mm: 0,
         }
     }
 
@@ -107,5 +109,51 @@ impl ClimateState {
         if self.last_insolation_tenths.len() < region_count {
             self.last_insolation_tenths.resize(region_count, 0);
         }
+    }
+
+    pub fn sea_level_equivalent_mm(&self) -> i32 {
+        self.sea_level_equivalent_mm
+    }
+
+    pub fn add_sea_level_equivalent_mm(&mut self, delta_mm: i32) {
+        if delta_mm == 0 {
+            return;
+        }
+        self.sea_level_equivalent_mm = self.sea_level_equivalent_mm.saturating_add(delta_mm);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClimateState, Region};
+
+    #[test]
+    fn sea_level_accumulator_saturates_and_tracks_delta() {
+        let regions = vec![Region {
+            id: 0,
+            x: 0,
+            y: 0,
+            elevation_m: 0,
+            latitude_deg: 0.0,
+            biome: 0,
+            water: 0,
+            soil: 0,
+            temperature_tenths_c: 0,
+            precipitation_mm: 0,
+            albedo_milli: 0,
+            freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 0,
+            hazards: crate::world::Hazards::default(),
+        }];
+
+        let mut climate = ClimateState::from_regions(&regions);
+        climate.add_sea_level_equivalent_mm(12);
+        assert_eq!(climate.sea_level_equivalent_mm(), 12);
+
+        climate.add_sea_level_equivalent_mm(-2);
+        assert_eq!(climate.sea_level_equivalent_mm(), 10);
+
+        climate.add_sea_level_equivalent_mm(i32::MAX);
+        assert_eq!(climate.sea_level_equivalent_mm(), i32::MAX);
     }
 }

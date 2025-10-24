@@ -20,6 +20,8 @@
 | `albedo_feedback` | cryosphere, coupler | Surface albedo updated from snow/ice coverage or the coupler feedback loop; note records `milli=<value>`. |
 | `glacier_mass_balance` | cryosphere | Degree-day accumulation versus melt; note records `balance_mm`. |
 | `freshwater_pulse` | cryosphere | Freshwater discharge from ice melt; note records `tenths_mm`. |
+| `ice_mass_variation` | cryosphere | Regional glacier storage changed; note reports `delta_kt`. |
+| `sea_level_contribution` | cryosphere | Meltwater raised global mean sea level; note reports `mm`. |
 | `era_end` | meta | Reserved for future milestones (unused in v0.0). |
 | `stagnation_warning` | meta | Reserved hook for growth stalls (unused in v0.0). |
 | `collapse_warning` | meta | Reserved hook for catastrophic collapse (unused in v0.0). |
