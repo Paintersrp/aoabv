@@ -53,6 +53,8 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub albedo: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub permafrost_active: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub freshwater_flux: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub melt_pulse: BTreeMap<String, i32>,
@@ -77,6 +79,7 @@ impl FrameDiff {
             && self.precip_extreme.is_empty()
             && self.humidity.is_empty()
             && self.albedo.is_empty()
+            && self.permafrost_active.is_empty()
             && self.freshwater_flux.is_empty()
             && self.melt_pulse.is_empty()
             && self.ice_mass.is_empty()
@@ -160,6 +163,11 @@ pub fn make_frame(
     for value in diff.albedo {
         frame_diff
             .albedo
+            .insert(World::region_key(value.region as usize), value.value);
+    }
+    for value in diff.permafrost_active {
+        frame_diff
+            .permafrost_active
             .insert(World::region_key(value.region as usize), value.value);
     }
     for value in diff.freshwater_flux {

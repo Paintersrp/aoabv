@@ -88,6 +88,8 @@ pub struct ClimateState {
     pub precipitation_peaks: Vec<VecDeque<u16>>,
     #[serde(skip)]
     pub snowpack_mm: Vec<i32>,
+    #[serde(skip)]
+    pub permafrost_active_cm: Vec<i32>,
     pub sea_level_equivalent_mm: i32,
 }
 
@@ -104,10 +106,12 @@ impl ClimateState {
         let mut temperature_maxima = Vec::with_capacity(regions.len());
         let mut precipitation_peaks = Vec::with_capacity(regions.len());
         let mut snowpack_mm = Vec::with_capacity(regions.len());
+        let mut permafrost_active_cm = Vec::with_capacity(regions.len());
         for _ in regions {
             temperature_maxima.push(Self::new_temperature_window());
             precipitation_peaks.push(Self::new_precipitation_window());
             snowpack_mm.push(Self::new_snowpack_cache());
+            permafrost_active_cm.push(Self::new_permafrost_cache());
         }
         Self {
             temperature_baseline_tenths,
@@ -116,6 +120,7 @@ impl ClimateState {
             temperature_maxima,
             precipitation_peaks,
             snowpack_mm,
+            permafrost_active_cm,
             sea_level_equivalent_mm: 0,
         }
     }
@@ -145,6 +150,11 @@ impl ClimateState {
             self.snowpack_mm
                 .extend((0..missing).map(|_| Self::new_snowpack_cache()));
         }
+        if self.permafrost_active_cm.len() < region_count {
+            let missing = region_count - self.permafrost_active_cm.len();
+            self.permafrost_active_cm
+                .extend((0..missing).map(|_| Self::new_permafrost_cache()));
+        }
     }
 
     pub fn sea_level_equivalent_mm(&self) -> i32 {
@@ -167,6 +177,10 @@ impl ClimateState {
     }
 
     fn new_snowpack_cache() -> i32 {
+        0
+    }
+
+    fn new_permafrost_cache() -> i32 {
         0
     }
 }

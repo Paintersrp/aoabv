@@ -21,6 +21,7 @@ pub struct Diff {
     pub precip_extreme: Vec<ScalarValue>,
     pub humidity: Vec<ScalarValue>,
     pub albedo: Vec<ScalarValue>,
+    pub permafrost_active: Vec<ScalarValue>,
     pub freshwater_flux: Vec<ScalarValue>,
     pub melt_pulse: Vec<ScalarValue>,
     pub ice_mass: Vec<ScalarValue>,
@@ -86,6 +87,10 @@ impl Diff {
 
     pub fn record_albedo(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.albedo, region_index as u32, value);
+    }
+
+    pub fn record_permafrost_active(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.permafrost_active, region_index as u32, value);
     }
 
     pub fn record_freshwater_flux(&mut self, region_index: usize, value: i32) {
@@ -196,6 +201,9 @@ impl Diff {
         for scalar in &other.albedo {
             Self::set_scalar_value(&mut self.albedo, scalar.region, scalar.value);
         }
+        for scalar in &other.permafrost_active {
+            Self::set_scalar_value(&mut self.permafrost_active, scalar.region, scalar.value);
+        }
         for scalar in &other.freshwater_flux {
             Self::set_scalar_value(&mut self.freshwater_flux, scalar.region, scalar.value);
         }
@@ -236,6 +244,7 @@ impl Diff {
             && self.precip_extreme.is_empty()
             && self.humidity.is_empty()
             && self.albedo.is_empty()
+            && self.permafrost_active.is_empty()
             && self.freshwater_flux.is_empty()
             && self.melt_pulse.is_empty()
             && self.ice_mass.is_empty()
@@ -340,6 +349,9 @@ impl Serialize for Diff {
         if !self.albedo.is_empty() {
             field_count += 1;
         }
+        if !self.permafrost_active.is_empty() {
+            field_count += 1;
+        }
         if !self.freshwater_flux.is_empty() {
             field_count += 1;
         }
@@ -391,6 +403,9 @@ impl Serialize for Diff {
         }
         if !self.albedo.is_empty() {
             state.serialize_field("albedo", &ScalarValues(&self.albedo))?;
+        }
+        if !self.permafrost_active.is_empty() {
+            state.serialize_field("permafrost_active", &ScalarValues(&self.permafrost_active))?;
         }
         if !self.freshwater_flux.is_empty() {
             state.serialize_field("freshwater_flux", &ScalarValues(&self.freshwater_flux))?;

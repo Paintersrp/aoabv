@@ -8,7 +8,7 @@ use crate::schedule::KernelRun;
 use crate::world::World;
 
 pub const STAGE: &str = "kernel:cryosphere";
-pub const CHRONICLE_LINE: &str = "Glacial melt raised coastal seas; albedo weakened.";
+pub const CHRONICLE_LINE: &str = "Active layer deepened; surface darkened slightly.";
 pub const SNOWMELT_CHRONICLE_LINE: &str = "Warm spell released highland snow into streams.";
 
 const ALBEDO_FLOOR: i32 = 100;
@@ -23,6 +23,26 @@ const WARM_DEGREE_DAY_MELT_MM: f32 = 4.8; // TODO(agents): rationale
 const RAIN_ON_SNOW_MELT_MM: f32 = 0.12; // TODO(agents): rationale
 const SNOWPACK_MAX_MM: f32 = 4_500.0; // TODO(agents): rationale
 const MELT_PULSE_CLAMP_MM: i32 = 1_000;
+const PERMAFROST_ACTIVE_TABLE: &[(i16, i32)] = &[
+    (-400, 30),
+    (-250, 55),
+    (-150, 80),
+    (-50, 110),
+    (50, 160),
+    (150, 210),
+    (250, 260),
+    (i16::MAX, 300),
+]; // TODO(agents): rationale
+
+fn active_layer_depth(temp_tenths: i16) -> i32 {
+    let mut depth = PERMAFROST_ACTIVE_TABLE
+        .iter()
+        .find(|(threshold, _)| temp_tenths <= *threshold)
+        .map(|(_, depth)| *depth)
+        .unwrap_or(0);
+    depth = depth.clamp(0, 300);
+    depth
+}
 
 pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
@@ -32,6 +52,8 @@ pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
     let mut snowmelt_regions = 0usize;
     let mut contributing_regions = 0usize;
     let mut total_melt_mm = 0.0;
+
+    world.climate.ensure_region_capacity(world.regions.len());
 
     for index in 0..world.regions.len() {
         let region = &world.regions[index];
@@ -49,6 +71,30 @@ pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
         let existing_flux = i32::from(region.freshwater_flux_tenths_mm);
         let existing_ice_mass = region.ice_mass_kilotons as f64;
         let mut snowpack_mm = world.climate.snowpack_mm[index] as f32;
+        let previous_active_layer = world.climate.permafrost_active_cm[index];
+        let baseline_offset = world
+            .climate
+            .temperature_baseline_tenths
+            .get(index)
+            .copied()
+            .unwrap_or(0);
+        let seasonal_temp = temp_tenths + i32::from(baseline_offset);
+        let seasonal_temp_clamped =
+            seasonal_temp.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+        let mut active_layer_cm = active_layer_depth(seasonal_temp_clamped);
+        active_layer_cm = active_layer_cm.clamp(0, 300);
+        let thaw_delta = active_layer_cm - previous_active_layer;
+        world.climate.permafrost_active_cm[index] = active_layer_cm;
+        if active_layer_cm != previous_active_layer {
+            diff.record_permafrost_active(index, active_layer_cm);
+            if thaw_delta > 0 {
+                diff.record_cause(Entry::new(
+                    format!("region:{}/permafrost", region.id),
+                    Code::PermafrostThaw,
+                    Some(format!("depth_cm={}", active_layer_cm)),
+                ));
+            }
+        }
 
         let temp_c = temp_tenths as f32 / 10.0;
         let precip_mm = region.precipitation_mm as f32;
@@ -118,11 +164,15 @@ pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
             (next_ice_mass / ICE_MASS_SATURATION_KT).min(1.0)
         };
         let albedo_noise = rng.next_signed_unit() * 10.0;
-        let mut next_albedo = (ALBEDO_FLOOR as f64
+        let mut raw_albedo = (ALBEDO_FLOOR as f64
             + (ALBEDO_MAX_I32 - ALBEDO_FLOOR) as f64 * coverage
             + latitude_weight * 40.0
             + albedo_noise)
             .round() as i32;
+        raw_albedo = raw_albedo.clamp(ALBEDO_FLOOR, ALBEDO_MAX_I32);
+        let thaw_bias = (thaw_delta / 5).clamp(-20, 20);
+        let biased_albedo = (raw_albedo - thaw_bias).clamp(ALBEDO_FLOOR, ALBEDO_MAX_I32);
+        let mut next_albedo = existing_albedo + (biased_albedo - existing_albedo).clamp(-20, 20);
         next_albedo = next_albedo.clamp(ALBEDO_FLOOR, ALBEDO_MAX_I32);
 
         if next_albedo != existing_albedo {
@@ -262,6 +312,10 @@ mod tests {
             "cryosphere should emit freshwater flux updates"
         );
         assert!(
+            !diff.permafrost_active.is_empty(),
+            "cryosphere should emit permafrost depth updates"
+        );
+        assert!(
             diff.ice_mass
                 .iter()
                 .any(|entry| entry.region == 0 || entry.region == 1),
@@ -292,6 +346,12 @@ mod tests {
             "ice variation cause expected"
         );
         assert!(
+            diff.causes
+                .iter()
+                .any(|entry| entry.code == Code::PermafrostThaw),
+            "permafrost thaw cause expected"
+        );
+        assert!(
             diff.melt_pulse
                 .iter()
                 .any(|entry| entry.region == 1 && entry.value > 0),
@@ -315,6 +375,13 @@ mod tests {
             world.climate.snowpack_mm[1] < 900,
             "snowpack cache should decrease after melt"
         );
+        for value in diff.permafrost_active {
+            assert!(
+                (0..=300).contains(&value.value),
+                "permafrost depth {} out of range",
+                value.value
+            );
+        }
     }
 
     #[test]
@@ -343,31 +410,51 @@ mod tests {
         let run_a = update(&mut world.clone(), &mut rng_a).expect("first run succeeds");
         let run_b = update(&mut world, &mut rng_b).expect("second run succeeds");
 
-        assert_eq!(run_a.diff.albedo, run_b.diff.albedo, "albedo deterministic");
-        assert_eq!(
-            run_a.diff.ice_mass, run_b.diff.ice_mass,
-            "ice mass deterministic"
-        );
-        assert_eq!(
-            run_a.diff.melt_pulse, run_b.diff.melt_pulse,
-            "melt pulse deterministic"
-        );
+        let diff_a = run_a.diff;
+        let diff_b = run_b.diff;
+
+        let Diff {
+            albedo: albedo_a,
+            ice_mass: ice_mass_a,
+            melt_pulse: melt_pulse_a,
+            permafrost_active: permafrost_a,
+            ..
+        } = diff_a;
+        let Diff {
+            albedo: albedo_b,
+            ice_mass: ice_mass_b,
+            melt_pulse: melt_pulse_b,
+            permafrost_active: permafrost_b,
+            ..
+        } = diff_b;
+
+        assert_eq!(albedo_a, albedo_b, "albedo deterministic");
+        assert_eq!(ice_mass_a, ice_mass_b, "ice mass deterministic");
+        assert_eq!(melt_pulse_a, melt_pulse_b, "melt pulse deterministic");
+        assert_eq!(permafrost_a, permafrost_b, "permafrost deterministic");
         assert_eq!(run_a.chronicle, run_b.chronicle);
 
-        for scalar in run_a.diff.albedo {
+        for scalar in &albedo_a {
             assert!(
                 (ALBEDO_FLOOR..=ALBEDO_MAX_I32).contains(&scalar.value),
                 "albedo {} out of range",
                 scalar.value
             );
         }
-        for scalar in run_a.diff.ice_mass {
+        for scalar in &ice_mass_a {
             assert!(scalar.value >= 0, "ice mass must remain non-negative");
         }
-        for scalar in run_a.diff.melt_pulse {
+        for scalar in &melt_pulse_a {
             assert!(
                 (0..=MELT_PULSE_CLAMP_MM).contains(&scalar.value),
                 "melt pulse {} out of bounds",
+                scalar.value
+            );
+        }
+        for scalar in &permafrost_a {
+            assert!(
+                (0..=300).contains(&scalar.value),
+                "permafrost depth {} out of range",
                 scalar.value
             );
         }
@@ -452,5 +539,79 @@ mod tests {
             world.climate.snowpack_mm[0] > 0,
             "snowpack cache should accumulate under persistent cold"
         );
+    }
+
+    #[test]
+    fn active_layer_lookup_is_deterministic() {
+        let temps = [-360, -240, -120, -10, 80, 180, 320];
+        let first: Vec<i32> = temps
+            .iter()
+            .map(|&t| active_layer_depth(t as i16))
+            .collect();
+        let second: Vec<i32> = temps
+            .iter()
+            .map(|&t| active_layer_depth(t as i16))
+            .collect();
+        assert_eq!(first, second, "lookup should be deterministic");
+        for depth in first {
+            assert!((0..=300).contains(&depth), "depth {} out of range", depth);
+        }
+    }
+
+    #[test]
+    fn albedo_change_is_capped_per_tick() {
+        let regions = vec![
+            Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 50,
+                latitude_deg: 68.0,
+                biome: 1,
+                water: 5_800,
+                soil: 5_400,
+                temperature_tenths_c: -90,
+                precipitation_mm: 500,
+                albedo_milli: 520,
+                freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 3_200,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 1,
+                x: 1,
+                y: 0,
+                elevation_m: 10,
+                latitude_deg: 40.0,
+                biome: 2,
+                water: 4_600,
+                soil: 4_200,
+                temperature_tenths_c: 110,
+                precipitation_mm: 650,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 20,
+                ice_mass_kilotons: 900,
+                hazards: Hazards::default(),
+            },
+        ];
+        let mut world = World::new(11, 2, 1, regions);
+        let baseline_albedo: Vec<i32> = world
+            .regions
+            .iter()
+            .map(|region| region.albedo_milli as i32)
+            .collect();
+        let mut rng = Stream::from(world.seed, STAGE, 5);
+        let run = update(&mut world, &mut rng).expect("cryosphere update succeeds");
+
+        for scalar in run.diff.albedo {
+            let previous = baseline_albedo[scalar.region as usize];
+            let delta = scalar.value - previous;
+            assert!(delta.abs() <= 20, "albedo delta {} exceeds clamp", delta);
+            assert!(
+                (ALBEDO_FLOOR..=ALBEDO_MAX_I32).contains(&scalar.value),
+                "albedo {} outside range",
+                scalar.value
+            );
+        }
     }
 }
