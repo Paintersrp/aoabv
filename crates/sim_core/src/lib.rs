@@ -11,7 +11,7 @@ pub mod world;
 use anyhow::{ensure, Result};
 use diff::Diff;
 use io::frame::Highlight;
-use kernels::{astronomy, atmosphere, climate, cryosphere, ecology, geodynamics};
+use kernels::{astronomy, atmosphere, climate, coupler, cryosphere, ecology, geodynamics};
 use reduce::apply;
 use rng::{stream_label, Stream};
 use schedule::run_kernel;
@@ -85,9 +85,14 @@ pub fn tick_once(
     chronicle.extend(cryosphere_run.chronicle);
     highlights.extend(cryosphere_run.highlights);
 
-    let albedo_reconcile_diff = climate::albedo_reconcile(world)?;
-    aggregate_diff.merge(&albedo_reconcile_diff);
-    apply(world, albedo_reconcile_diff);
+    let coupler_diff =
+        coupler::reconcile_with_world(world, &atmosphere_run.diff, &cryosphere_run.diff)?;
+    let coupler_active = !coupler_diff.is_empty();
+    aggregate_diff.merge(&coupler_diff);
+    apply(world, coupler_diff);
+    if coupler_active {
+        chronicle.push(coupler::CHRONICLE_LINE.to_string());
+    }
 
     let climate_run = run_kernel(
         world,

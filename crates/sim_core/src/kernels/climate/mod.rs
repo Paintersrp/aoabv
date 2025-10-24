@@ -5,17 +5,11 @@ use crate::schedule::KernelRun;
 use crate::world::World;
 use anyhow::{ensure, Result};
 
-mod albedo;
 mod classification;
 mod diagnostics;
 
 pub const STAGE: &str = "kernel:climate";
-pub const ALBEDO_RECONCILE_STAGE: &str = "kernel:climate/albedo_reconcile";
 pub const CORE_STAGE: &str = "kernel:climate/core";
-
-pub fn albedo_reconcile(world: &mut World) -> Result<Diff> {
-    albedo::reconcile(world)
-}
 pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
     let mut chronicle = Vec::new();
@@ -71,7 +65,6 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernels::atmosphere;
     use crate::rng::Stream;
     use crate::world::{Hazards, Region, World};
 
@@ -336,108 +329,5 @@ mod tests {
 
         assert_eq!(run_a.diff.causes, run_b.diff.causes);
         assert_eq!(run_a.chronicle, run_b.chronicle);
-    }
-
-    #[test]
-    fn albedo_reconcile_emits_diag_and_defers_temperature() {
-        let regions = vec![
-            Region {
-                id: 0,
-                x: 0,
-                y: 0,
-                elevation_m: 100,
-                latitude_deg: 70.0,
-                biome: 0,
-                water: 5_500,
-                soil: 5_000,
-                temperature_tenths_c: -120,
-                precipitation_mm: 400,
-                albedo_milli: 720,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 12_000,
-                hazards: Hazards::default(),
-            },
-            Region {
-                id: 1,
-                x: 1,
-                y: 0,
-                elevation_m: 50,
-                latitude_deg: 10.0,
-                biome: 0,
-                water: 6_000,
-                soil: 5_500,
-                temperature_tenths_c: 40,
-                precipitation_mm: 500,
-                albedo_milli: 360,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 500,
-                hazards: Hazards::default(),
-            },
-        ];
-        let mut world_with = World::new(777, 2, 1, regions.clone());
-        world_with.climate.last_albedo_milli[0] =
-            i32::from(world_with.regions[0].albedo_milli) - 150;
-        let initial_temperature = world_with.regions[0].temperature_tenths_c;
-
-        let diff = albedo_reconcile(&mut world_with).expect("reconcile succeeds");
-        let diag = diff.diag_energy.clone().expect("diag energy recorded");
-        assert!(diff
-            .causes
-            .iter()
-            .any(|entry| entry.code == Code::AlbedoFeedback));
-        assert!(diff
-            .causes
-            .iter()
-            .any(|entry| entry.code == Code::EnergyBalanceAdjustment));
-        assert_ne!(
-            diag.temp_adjust_tenths, 0,
-            "temperature adjustment captured"
-        );
-        assert_ne!(diag.albedo_anomaly_milli, 0, "albedo anomaly captured");
-        assert!(
-            diff.temperature.is_empty(),
-            "no same-tick temperature diffs"
-        );
-        assert_eq!(
-            world_with.regions[0].temperature_tenths_c, initial_temperature,
-            "world temperatures remain unchanged"
-        );
-        let baseline_shift = world_with.climate.temperature_baseline_tenths[0];
-        assert_ne!(baseline_shift, 0, "baseline shift applied for next tick");
-        assert_eq!(
-            diag.temp_adjust_tenths,
-            i32::from(baseline_shift),
-            "diag reports applied baseline shift"
-        );
-
-        let world_control = World::new(777, 2, 1, regions);
-
-        let mut rng_with = Stream::from(world_with.seed, atmosphere::STAGE, 2);
-        let mut rng_without = Stream::from(world_control.seed, atmosphere::STAGE, 2);
-        let diff_with = atmosphere::update(&world_with, &mut rng_with)
-            .expect("atmosphere with baseline")
-            .diff;
-        let diff_without = atmosphere::update(&world_control, &mut rng_without)
-            .expect("atmosphere without baseline")
-            .diff;
-
-        let temp_with = diff_with
-            .temperature
-            .iter()
-            .find(|value| value.region == 0)
-            .map(|value| value.value)
-            .expect("temperature diff for region 0");
-        let temp_without = diff_without
-            .temperature
-            .iter()
-            .find(|value| value.region == 0)
-            .map(|value| value.value)
-            .expect("temperature diff for region 0 control");
-
-        assert_eq!(
-            temp_with - temp_without,
-            i32::from(baseline_shift),
-            "baseline shift applies on subsequent tick"
-        );
     }
 }
