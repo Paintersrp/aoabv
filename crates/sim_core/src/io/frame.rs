@@ -63,6 +63,8 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub heatwave_idx: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub diag_climate: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub soil: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub water: BTreeMap<String, i32>,
@@ -84,6 +86,7 @@ impl FrameDiff {
             && self.melt_pulse.is_empty()
             && self.ice_mass.is_empty()
             && self.heatwave_idx.is_empty()
+            && self.diag_climate.is_empty()
             && self.soil.is_empty()
             && self.water.is_empty()
     }
@@ -190,6 +193,11 @@ pub fn make_frame(
             .heatwave_idx
             .insert(World::region_key(value.region as usize), value.value);
     }
+    for value in diff.diag_climate {
+        frame_diff
+            .diag_climate
+            .insert(World::region_key(value.region as usize), value.value);
+    }
     for delta in diff.soil {
         frame_diff
             .soil
@@ -223,6 +231,7 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn frame_diff_excludes_hazards_key() {
@@ -287,6 +296,7 @@ mod tests {
         diff.record_albedo(1, 875);
         diff.record_freshwater_flux(2, 1_234);
         diff.record_heatwave_idx(0, 210);
+        diff.record_diag_climate(0, -42);
 
         let frame = make_frame(5, diff, Vec::new(), Vec::new(), false, 8, 4);
         let json_line = frame.to_ndjson().expect("frame serializes");
@@ -360,6 +370,13 @@ mod tests {
             .as_object()
             .expect("heatwave_idx is object");
         assert_eq!(heatwave_idx.get("r:0").and_then(|v| v.as_i64()), Some(210));
+
+        let diag_climate = diff_map
+            .get("diag_climate")
+            .expect("diag_climate map present")
+            .as_object()
+            .expect("diag_climate is object");
+        assert_eq!(diag_climate.get("r:0").and_then(|v| v.as_i64()), Some(-42));
     }
 
     #[test]
@@ -387,5 +404,53 @@ mod tests {
                 .and_then(|v| v.as_i64()),
             Some(-12)
         );
+    }
+
+    proptest! {
+        #[test]
+        fn frame_diff_region_keys_are_well_formed(values in proptest::collection::vec(-5_000i32..5_000, 4)) {
+            let mut diff = Diff::default();
+            let regions = [3usize, 1, 2, 0];
+            for (offset, region) in regions.iter().enumerate() {
+                let base = values[offset];
+                diff.record_biome(*region, ((offset as u8) + 1) % 6);
+                diff.record_insolation(*region, base);
+                diff.record_tide_envelope(*region, base - 10);
+                diff.record_elevation(*region, base + 200);
+                diff.record_temperature(*region, base);
+                diff.record_temperature_baseline(*region, base / 2);
+                diff.record_precipitation(*region, base.abs());
+                let extreme = if base == 0 { 1 } else { base };
+                diff.record_precip_extreme(*region, extreme);
+                diff.record_humidity(*region, base + 50);
+                let albedo = (base.abs() % 900) + 100;
+                diff.record_albedo(*region, albedo);
+                diff.record_permafrost_active(*region, base - 25);
+                diff.record_freshwater_flux(*region, base.abs());
+                let melt = if base == 0 { 5 } else { base.abs() };
+                diff.record_melt_pulse(*region, melt);
+                diff.record_ice_mass(*region, (base.abs() + 100) as i32);
+                diff.record_heatwave_idx(*region, extreme);
+                diff.record_water_delta(*region, extreme);
+                diff.record_soil_delta(*region, -extreme);
+            }
+            diff.record_diag_climate(0, values[0]);
+            diff.record_diag_climate(1, values[1]);
+
+            let frame = make_frame(0, diff, Vec::new(), Vec::new(), false, 2, 2);
+            let json_line = frame.to_ndjson().expect("frame serializes");
+            let value: serde_json::Value = serde_json::from_str(json_line.trim_end()).expect("valid json");
+            if let Some(diff_value) = value.get("diff") {
+                let diff_map = diff_value.as_object().expect("diff is object");
+                for map_value in diff_map.values() {
+                    let entries = map_value.as_object().expect("entries are maps");
+                    for (key, entry_value) in entries {
+                        prop_assert!(key.starts_with("r:"));
+                        prop_assert!(key[2..].chars().all(|c| c.is_ascii_digit()));
+                        prop_assert!(entry_value.as_i64().is_some());
+                    }
+                }
+            }
+        }
     }
 }

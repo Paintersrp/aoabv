@@ -11,7 +11,9 @@ pub mod world;
 use anyhow::{ensure, Result};
 use diff::Diff;
 use io::frame::Highlight;
-use kernels::{astronomy, atmosphere, climate, coupler, cryosphere, ecology, geodynamics};
+use kernels::{
+    astronomy, atmosphere, climate, climate_diag, coupler, cryosphere, ecology, geodynamics,
+};
 use reduce::apply;
 use rng::{stream_label, Stream};
 use schedule::run_kernel;
@@ -94,6 +96,13 @@ pub fn tick_once(
         chronicle.push(coupler::CHRONICLE_LINE.to_string());
     }
 
+    let mut climate_diag_rng = Stream::from(seed, climate_diag::STAGE, tick);
+    let climate_diag_run = climate_diag::update(&*world, &mut climate_diag_rng)?;
+    aggregate_diff.merge(&climate_diag_run.diff);
+    apply(world, climate_diag_run.diff.clone());
+    chronicle.extend(climate_diag_run.chronicle);
+    highlights.extend(climate_diag_run.highlights);
+
     let climate_run = run_kernel(
         world,
         &mut aggregate_diff,
@@ -128,6 +137,7 @@ pub fn tick_once(
 mod tests {
     use super::*;
     use crate::io::seed::{build_world, Seed};
+    use crate::kernels::climate_diag;
 
     #[test]
     fn tick_advances_world() {
@@ -145,5 +155,35 @@ mod tests {
         let seed = world.seed;
         let (_diff, _chronicle, _highlights) = tick_once(&mut world, seed, next_tick).unwrap();
         assert_eq!(world.tick, next_tick);
+    }
+
+    #[test]
+    fn diagnostic_chronicle_emitted_before_climate_updates() {
+        let seed_json = r#"{
+            "name": "chron_test",
+            "width": 2,
+            "height": 1,
+            "elevation_noise": {"octaves": 1, "freq": 0.1, "amp": 1.0, "seed": 7},
+            "humidity_bias": {"equator": 0.1, "poles": -0.1}
+        }"#;
+        let seed: Seed = serde_json::from_str(seed_json).unwrap();
+        let mut world = build_world(&seed, Some(111));
+        let seed_value = world.seed;
+        let next_tick = world.tick + 1;
+
+        let (_diff, chronicle, _highlights) =
+            tick_once(&mut world, seed_value, next_tick).expect("tick_once succeeds");
+
+        let diag_index = chronicle
+            .iter()
+            .position(|entry| entry == climate_diag::CHRONICLE_LINE)
+            .expect("diagnostic chronicle present");
+
+        if let Some(climate_index) = chronicle
+            .iter()
+            .position(|entry| entry.contains("shifted toward"))
+        {
+            assert!(diag_index < climate_index);
+        }
     }
 }
