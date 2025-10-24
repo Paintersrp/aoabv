@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use serde::{Deserialize, Serialize};
 
 /// Hazard gauges for a region.
@@ -80,8 +82,14 @@ pub struct ClimateState {
     pub temperature_baseline_tenths: Vec<i16>,
     pub last_albedo_milli: Vec<i32>,
     pub last_insolation_tenths: Vec<i32>,
+    #[serde(skip)]
+    pub temperature_maxima: Vec<VecDeque<i16>>,
+    #[serde(skip)]
+    pub precipitation_peaks: Vec<VecDeque<u16>>,
     pub sea_level_equivalent_mm: i32,
 }
+
+pub(crate) const EXTREME_WINDOW: usize = 6; // TODO(agents): rationale
 
 impl ClimateState {
     pub fn from_regions(regions: &[Region]) -> Self {
@@ -91,10 +99,18 @@ impl ClimateState {
             .map(|region| i32::from(region.albedo_milli))
             .collect();
         let last_insolation_tenths = vec![0; regions.len()];
+        let mut temperature_maxima = Vec::with_capacity(regions.len());
+        let mut precipitation_peaks = Vec::with_capacity(regions.len());
+        for _ in regions {
+            temperature_maxima.push(Self::new_temperature_window());
+            precipitation_peaks.push(Self::new_precipitation_window());
+        }
         Self {
             temperature_baseline_tenths,
             last_albedo_milli,
             last_insolation_tenths,
+            temperature_maxima,
+            precipitation_peaks,
             sea_level_equivalent_mm: 0,
         }
     }
@@ -109,6 +125,16 @@ impl ClimateState {
         if self.last_insolation_tenths.len() < region_count {
             self.last_insolation_tenths.resize(region_count, 0);
         }
+        if self.temperature_maxima.len() < region_count {
+            let missing = region_count - self.temperature_maxima.len();
+            self.temperature_maxima
+                .extend((0..missing).map(|_| Self::new_temperature_window()));
+        }
+        if self.precipitation_peaks.len() < region_count {
+            let missing = region_count - self.precipitation_peaks.len();
+            self.precipitation_peaks
+                .extend((0..missing).map(|_| Self::new_precipitation_window()));
+        }
     }
 
     pub fn sea_level_equivalent_mm(&self) -> i32 {
@@ -120,6 +146,14 @@ impl ClimateState {
             return;
         }
         self.sea_level_equivalent_mm = self.sea_level_equivalent_mm.saturating_add(delta_mm);
+    }
+
+    fn new_temperature_window() -> VecDeque<i16> {
+        VecDeque::from(vec![0; EXTREME_WINDOW])
+    }
+
+    fn new_precipitation_window() -> VecDeque<u16> {
+        VecDeque::from(vec![0; EXTREME_WINDOW])
     }
 }
 

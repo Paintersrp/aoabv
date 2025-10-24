@@ -1,7 +1,7 @@
 use crate::cause::{Code, Entry};
 use crate::diff::Diff;
 use crate::rng::Stream;
-use crate::world::World;
+use crate::world::{World, EXTREME_WINDOW};
 
 use super::{
     orography::OrographyEffects,
@@ -10,13 +10,18 @@ use super::{
     MONSOON_STRENGTH_THRESHOLD, PRECIP_MAX_MM, PRECIP_MIN_MM, TEMP_MAX_TENTHS_C, TEMP_MIN_TENTHS_C,
 };
 
+pub(super) const PRECIP_EXTREME_THRESHOLD_MM: i32 = 400; // TODO(agents): rationale
+pub(super) const HEAT_EXTREME_THRESHOLD_TENTHS: i32 = 120; // TODO(agents): rationale
+pub(super) const PRECIP_EXTREME_CLAMP: i32 = 2_000;
+pub(super) const HEAT_EXTREME_CLAMP: i32 = 500;
+
 pub(super) struct PrecipitationOutcome {
     pub diff: Diff,
     pub chronicle: Vec<String>,
 }
 
 pub(super) fn commit(
-    world: &World,
+    world: &mut World,
     humidity_tenths: &[i32],
     seasonal: &SeasonalityContext,
     orography: &OrographyEffects,
@@ -25,6 +30,8 @@ pub(super) fn commit(
     let mut diff = Diff::default();
     let mut chronicle = Vec::new();
     let mut monsoon_regions = 0usize;
+
+    world.climate.ensure_region_capacity(world.regions.len());
 
     for (index, region) in world.regions.iter().enumerate() {
         let mut commit_rng = stream.derive(index as u64);
@@ -76,6 +83,62 @@ pub(super) fn commit(
         let precip_mm = scaled_precip.clamp(PRECIP_MIN_MM, PRECIP_MAX_MM);
         if u16::from(region.precipitation_mm) != precip_mm as u16 {
             diff.record_precipitation(index, precip_mm);
+        }
+
+        if let Some(window) = world.climate.temperature_maxima.get_mut(index) {
+            if window.len() >= EXTREME_WINDOW {
+                window.pop_front();
+            }
+            window.push_back(temperature_tenths as i16);
+            if world.tick >= EXTREME_WINDOW as u64 {
+                let mut min_temp = i16::MAX;
+                let mut max_temp = i16::MIN;
+                for value in window.iter().copied() {
+                    min_temp = min_temp.min(value);
+                    max_temp = max_temp.max(value);
+                }
+                let heat_anomaly =
+                    (i32::from(max_temp) - i32::from(min_temp)).clamp(0, HEAT_EXTREME_CLAMP);
+                if heat_anomaly >= HEAT_EXTREME_THRESHOLD_TENTHS {
+                    diff.record_heatwave_idx(index, heat_anomaly);
+                    diff.record_cause(Entry::new(
+                        format!("region:{}/temperature", region.id),
+                        Code::HeatExtreme,
+                        Some(format!(
+                            "anomaly_tenths={};window={}",
+                            heat_anomaly, EXTREME_WINDOW
+                        )),
+                    ));
+                }
+            }
+        }
+
+        if let Some(window) = world.climate.precipitation_peaks.get_mut(index) {
+            if window.len() >= EXTREME_WINDOW {
+                window.pop_front();
+            }
+            window.push_back(precip_mm as u16);
+            if world.tick >= EXTREME_WINDOW as u64 {
+                let mut min_precip = u16::MAX;
+                let mut max_precip = u16::MIN;
+                for value in window.iter().copied() {
+                    min_precip = min_precip.min(value);
+                    max_precip = max_precip.max(value);
+                }
+                let precip_anomaly =
+                    (i32::from(max_precip) - i32::from(min_precip)).clamp(0, PRECIP_EXTREME_CLAMP);
+                if precip_anomaly >= PRECIP_EXTREME_THRESHOLD_MM {
+                    diff.record_precip_extreme(index, precip_anomaly);
+                    diff.record_cause(Entry::new(
+                        format!("region:{}/precip", region.id),
+                        Code::StormTrackShift,
+                        Some(format!(
+                            "anomaly_mm={};window={}",
+                            precip_anomaly, EXTREME_WINDOW
+                        )),
+                    ));
+                }
+            }
         }
 
         if seasonality::has_seasonal_variation(seasonal.scalar) {
@@ -166,6 +229,7 @@ pub(super) fn commit(
         )
     };
     chronicle.push(summary);
+    chronicle.push("Convective bursts spiked rainfall; heat lingered over plains.".to_string());
 
     PrecipitationOutcome { diff, chronicle }
 }

@@ -210,14 +210,14 @@ mod tests {
 
         // Atmosphere should reflect baseline adjustments on the next tick within
         // a tenth-degree tolerance.
-        let baseline_world = world.clone();
-        let control_world = world_copy;
-        let mut rng = Stream::from(world.seed, atmosphere::STAGE, 3);
-        let mut rng_control = Stream::from(control_world.seed, atmosphere::STAGE, 3);
-        let baseline_run = atmosphere::update(&baseline_world, &mut rng)
+        let mut baseline_world = world.clone();
+        let mut control_world = world_copy;
+        let mut rng = Stream::from(world.seed, "CLIMATE::atmosphere_substep", 3);
+        let mut rng_control = Stream::from(control_world.seed, "CLIMATE::atmosphere_substep", 3);
+        let baseline_run = atmosphere::update(&mut baseline_world, &mut rng)
             .expect("baseline update succeeds")
             .diff;
-        let control_run = atmosphere::update(&control_world, &mut rng_control)
+        let control_run = atmosphere::update(&mut control_world, &mut rng_control)
             .expect("control update succeeds")
             .diff;
 
