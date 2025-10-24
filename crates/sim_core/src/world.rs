@@ -86,6 +86,8 @@ pub struct ClimateState {
     pub temperature_maxima: Vec<VecDeque<i16>>,
     #[serde(skip)]
     pub precipitation_peaks: Vec<VecDeque<u16>>,
+    #[serde(skip)]
+    pub snowpack_mm: Vec<i32>,
     pub sea_level_equivalent_mm: i32,
 }
 
@@ -101,9 +103,11 @@ impl ClimateState {
         let last_insolation_tenths = vec![0; regions.len()];
         let mut temperature_maxima = Vec::with_capacity(regions.len());
         let mut precipitation_peaks = Vec::with_capacity(regions.len());
+        let mut snowpack_mm = Vec::with_capacity(regions.len());
         for _ in regions {
             temperature_maxima.push(Self::new_temperature_window());
             precipitation_peaks.push(Self::new_precipitation_window());
+            snowpack_mm.push(Self::new_snowpack_cache());
         }
         Self {
             temperature_baseline_tenths,
@@ -111,6 +115,7 @@ impl ClimateState {
             last_insolation_tenths,
             temperature_maxima,
             precipitation_peaks,
+            snowpack_mm,
             sea_level_equivalent_mm: 0,
         }
     }
@@ -135,6 +140,11 @@ impl ClimateState {
             self.precipitation_peaks
                 .extend((0..missing).map(|_| Self::new_precipitation_window()));
         }
+        if self.snowpack_mm.len() < region_count {
+            let missing = region_count - self.snowpack_mm.len();
+            self.snowpack_mm
+                .extend((0..missing).map(|_| Self::new_snowpack_cache()));
+        }
     }
 
     pub fn sea_level_equivalent_mm(&self) -> i32 {
@@ -154,6 +164,10 @@ impl ClimateState {
 
     fn new_precipitation_window() -> VecDeque<u16> {
         VecDeque::from(vec![0; EXTREME_WINDOW])
+    }
+
+    fn new_snowpack_cache() -> i32 {
+        0
     }
 }
 
@@ -225,6 +239,9 @@ mod tests {
             assert!(window.iter().all(|value| *value == 0));
         }
 
+        assert_eq!(climate.snowpack_mm.len(), regions.len());
+        assert!(climate.snowpack_mm.iter().all(|value| *value == 0));
+
         regions.push(Region {
             id: 3,
             x: 3,
@@ -246,6 +263,7 @@ mod tests {
 
         assert_eq!(climate.temperature_maxima.len(), regions.len());
         assert_eq!(climate.precipitation_peaks.len(), regions.len());
+        assert_eq!(climate.snowpack_mm.len(), regions.len());
         assert!(climate
             .temperature_maxima
             .last()
@@ -258,5 +276,6 @@ mod tests {
             .unwrap()
             .iter()
             .all(|v| *v == 0));
+        assert_eq!(*climate.snowpack_mm.last().unwrap(), 0);
     }
 }

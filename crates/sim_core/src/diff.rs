@@ -22,6 +22,7 @@ pub struct Diff {
     pub humidity: Vec<ScalarValue>,
     pub albedo: Vec<ScalarValue>,
     pub freshwater_flux: Vec<ScalarValue>,
+    pub melt_pulse: Vec<ScalarValue>,
     pub ice_mass: Vec<ScalarValue>,
     pub heatwave_idx: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
@@ -89,6 +90,13 @@ impl Diff {
 
     pub fn record_freshwater_flux(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.freshwater_flux, region_index as u32, value);
+    }
+
+    pub fn record_melt_pulse(&mut self, region_index: usize, value: i32) {
+        if value == 0 {
+            return;
+        }
+        Self::set_scalar_value(&mut self.melt_pulse, region_index as u32, value);
     }
 
     pub fn record_ice_mass(&mut self, region_index: usize, value: i32) {
@@ -191,6 +199,9 @@ impl Diff {
         for scalar in &other.freshwater_flux {
             Self::set_scalar_value(&mut self.freshwater_flux, scalar.region, scalar.value);
         }
+        for scalar in &other.melt_pulse {
+            Self::set_scalar_value(&mut self.melt_pulse, scalar.region, scalar.value);
+        }
         for scalar in &other.ice_mass {
             Self::set_scalar_value(&mut self.ice_mass, scalar.region, scalar.value);
         }
@@ -226,6 +237,7 @@ impl Diff {
             && self.humidity.is_empty()
             && self.albedo.is_empty()
             && self.freshwater_flux.is_empty()
+            && self.melt_pulse.is_empty()
             && self.ice_mass.is_empty()
             && self.heatwave_idx.is_empty()
             && self.hazards.is_empty()
@@ -331,6 +343,9 @@ impl Serialize for Diff {
         if !self.freshwater_flux.is_empty() {
             field_count += 1;
         }
+        if !self.melt_pulse.is_empty() {
+            field_count += 1;
+        }
         if !self.ice_mass.is_empty() {
             field_count += 1;
         }
@@ -379,6 +394,9 @@ impl Serialize for Diff {
         }
         if !self.freshwater_flux.is_empty() {
             state.serialize_field("freshwater_flux", &ScalarValues(&self.freshwater_flux))?;
+        }
+        if !self.melt_pulse.is_empty() {
+            state.serialize_field("melt_pulse", &ScalarValues(&self.melt_pulse))?;
         }
         if !self.ice_mass.is_empty() {
             state.serialize_field("ice_mass", &ScalarValues(&self.ice_mass))?;

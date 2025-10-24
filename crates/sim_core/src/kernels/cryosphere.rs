@@ -9,6 +9,7 @@ use crate::world::World;
 
 pub const STAGE: &str = "kernel:cryosphere";
 pub const CHRONICLE_LINE: &str = "Glacial melt raised coastal seas; albedo weakened.";
+pub const SNOWMELT_CHRONICLE_LINE: &str = "Warm spell released highland snow into streams.";
 
 const ALBEDO_FLOOR: i32 = 100;
 const ALBEDO_MAX_I32: i32 = ALBEDO_MAX as i32;
@@ -16,12 +17,19 @@ const FRESHWATER_FLUX_MAX_I32: i32 = FRESHWATER_FLUX_MAX as i32;
 const ICE_ACCUM_PER_MM: f64 = 6.5;
 const ICE_MASS_SATURATION_KT: f64 = 60_000.0;
 const ICE_MASS_MAX_KT: f64 = 200_000.0;
+const SNOWPACK_CAPTURE_RATIO: f32 = 0.6; // TODO(agents): rationale
+const COLD_DEGREE_DAY_ACCUM_MM: f32 = 1.4; // TODO(agents): rationale
+const WARM_DEGREE_DAY_MELT_MM: f32 = 4.8; // TODO(agents): rationale
+const RAIN_ON_SNOW_MELT_MM: f32 = 0.12; // TODO(agents): rationale
+const SNOWPACK_MAX_MM: f32 = 4_500.0; // TODO(agents): rationale
+const MELT_PULSE_CLAMP_MM: i32 = 1_000;
 
 pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
     let mut chronicle = Vec::new();
     let mut ice_updates = 0usize;
     let mut freshwater_regions = 0usize;
+    let mut snowmelt_regions = 0usize;
     let mut contributing_regions = 0usize;
     let mut total_melt_mm = 0.0;
 
@@ -36,15 +44,51 @@ pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
         );
 
         let temp_tenths = i32::from(region.temperature_tenths_c);
-        let precip_mm = i32::from(region.precipitation_mm);
+        let precip_mm_i32 = i32::from(region.precipitation_mm);
         let existing_albedo = i32::from(region.albedo_milli);
         let existing_flux = i32::from(region.freshwater_flux_tenths_mm);
         let existing_ice_mass = region.ice_mass_kilotons as f64;
+        let mut snowpack_mm = world.climate.snowpack_mm[index] as f32;
+
+        let temp_c = temp_tenths as f32 / 10.0;
+        let precip_mm = region.precipitation_mm as f32;
+        let cold_degree_days = (-temp_c).max(0.0);
+        let warm_degree_days = temp_c.max(0.0);
+
+        let snow_accum = if temp_c <= 0.0 {
+            precip_mm * SNOWPACK_CAPTURE_RATIO + cold_degree_days * COLD_DEGREE_DAY_ACCUM_MM
+        } else {
+            0.0
+        };
+        snowpack_mm = (snowpack_mm + snow_accum).clamp(0.0, SNOWPACK_MAX_MM);
+
+        let potential_melt = if warm_degree_days > 0.0 {
+            warm_degree_days * WARM_DEGREE_DAY_MELT_MM + precip_mm * RAIN_ON_SNOW_MELT_MM
+        } else {
+            0.0
+        };
+        let actual_melt = potential_melt
+            .max(0.0)
+            .min(snowpack_mm)
+            .min(MELT_PULSE_CLAMP_MM as f32);
+        snowpack_mm = (snowpack_mm - actual_melt).max(0.0);
+        world.climate.snowpack_mm[index] = snowpack_mm.round() as i32;
+        let melt_pulse_mm = actual_melt.round() as i32;
+        let snowmelt_contribution_mm = actual_melt as f64;
+        if melt_pulse_mm > 0 {
+            diff.record_melt_pulse(index, melt_pulse_mm);
+            diff.record_cause(Entry::new(
+                format!("region:{}/snowmelt", region.id),
+                Code::SnowmeltSurge,
+                Some(format!("mm={}", melt_pulse_mm)),
+            ));
+            snowmelt_regions += 1;
+        }
 
         let cold_degree_days = (-temp_tenths).max(0) as f64 / 10.0;
         let warm_degree_days = temp_tenths.max(0) as f64 / 10.0;
 
-        let snowfall_input = (precip_mm as f64) * (0.02 + cold_degree_days / 120.0);
+        let snowfall_input = (precip_mm_i32 as f64) * (0.02 + cold_degree_days / 120.0);
         let melt_variability = 6.0 + rng.next_signed_unit() * 1.5;
         let melt_output = warm_degree_days * melt_variability;
         let mass_balance = snowfall_input - melt_output;
@@ -98,7 +142,9 @@ pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
             ));
         }
 
-        let freshwater_flux = (mass_balance.max(0.0) * 10.0).round() as i32;
+        let glacier_melt_mm = (-mass_balance).max(0.0);
+        let melt_total_mm = glacier_melt_mm + snowmelt_contribution_mm;
+        let freshwater_flux = (melt_total_mm * 10.0).round() as i32;
         let freshwater_clamped = freshwater_flux.clamp(0, FRESHWATER_FLUX_MAX_I32);
         if freshwater_clamped != existing_flux {
             diff.record_freshwater_flux(index, freshwater_clamped);
@@ -112,9 +158,16 @@ pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
             freshwater_regions += 1;
         }
 
-        let melt_mm = (-mass_balance).max(0.0);
-        if melt_mm > 0.0 {
-            total_melt_mm += melt_mm;
+        let mut region_contributed = false;
+        if glacier_melt_mm > 0.0 {
+            total_melt_mm += glacier_melt_mm;
+            region_contributed = true;
+        }
+        if snowmelt_contribution_mm > 0.0 {
+            total_melt_mm += snowmelt_contribution_mm;
+            region_contributed = true;
+        }
+        if region_contributed {
             contributing_regions += 1;
         }
     }
@@ -138,6 +191,10 @@ pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
         ));
     } else {
         chronicle.push(CHRONICLE_LINE.to_string());
+    }
+
+    if snowmelt_regions > 0 {
+        chronicle.push(SNOWMELT_CHRONICLE_LINE.to_string());
     }
 
     Ok(KernelRun {
@@ -190,6 +247,7 @@ mod tests {
             },
         ];
         let mut world = World::new(9, 2, 1, regions);
+        world.climate.snowpack_mm[1] = 900;
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
         let run = update(&mut world, &mut rng).expect("cryosphere update succeeds");
@@ -233,8 +291,30 @@ mod tests {
                 .any(|entry| entry.code == Code::IceMassVariation),
             "ice variation cause expected"
         );
+        assert!(
+            diff.melt_pulse
+                .iter()
+                .any(|entry| entry.region == 1 && entry.value > 0),
+            "melt pulse should be recorded for warm region"
+        );
+        assert!(
+            diff.causes
+                .iter()
+                .any(|entry| entry.code == Code::SnowmeltSurge),
+            "snowmelt surge cause expected"
+        );
         assert!(world.climate.sea_level_equivalent_mm() >= 0);
         assert!(!run.chronicle.is_empty());
+        assert!(
+            run.chronicle
+                .iter()
+                .any(|line| line == SNOWMELT_CHRONICLE_LINE),
+            "snowmelt chronicle line should be included"
+        );
+        assert!(
+            world.climate.snowpack_mm[1] < 900,
+            "snowpack cache should decrease after melt"
+        );
     }
 
     #[test]
@@ -256,6 +336,7 @@ mod tests {
             hazards: Hazards::default(),
         }];
         let mut world = World::new(42, 1, 1, regions);
+        world.climate.snowpack_mm[0] = 1_200;
         let mut rng_a = Stream::from(world.seed, STAGE, 3);
         let mut rng_b = Stream::from(world.seed, STAGE, 3);
 
@@ -266,6 +347,10 @@ mod tests {
         assert_eq!(
             run_a.diff.ice_mass, run_b.diff.ice_mass,
             "ice mass deterministic"
+        );
+        assert_eq!(
+            run_a.diff.melt_pulse, run_b.diff.melt_pulse,
+            "melt pulse deterministic"
         );
         assert_eq!(run_a.chronicle, run_b.chronicle);
 
@@ -278,6 +363,13 @@ mod tests {
         }
         for scalar in run_a.diff.ice_mass {
             assert!(scalar.value >= 0, "ice mass must remain non-negative");
+        }
+        for scalar in run_a.diff.melt_pulse {
+            assert!(
+                (0..=MELT_PULSE_CLAMP_MM).contains(&scalar.value),
+                "melt pulse {} out of bounds",
+                scalar.value
+            );
         }
     }
 
@@ -301,6 +393,7 @@ mod tests {
         }];
 
         let mut world = World::new(5, 1, 1, regions);
+        world.climate.snowpack_mm[0] = 800;
         let mut rng = Stream::from(world.seed, STAGE, 2);
         let run = update(&mut world, &mut rng).expect("cryosphere update succeeds");
 
@@ -325,6 +418,39 @@ mod tests {
         assert!(
             !run.diff.ice_mass.is_empty(),
             "ice mass diff should be recorded"
+        );
+    }
+
+    #[test]
+    fn snowpack_does_not_melt_when_persistently_cold() {
+        let regions = vec![Region {
+            id: 0,
+            x: 0,
+            y: 0,
+            elevation_m: 0,
+            latitude_deg: 68.0,
+            biome: 0,
+            water: 5_000,
+            soil: 5_000,
+            temperature_tenths_c: -220,
+            precipitation_mm: 400,
+            albedo_milli: 480,
+            freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 3_000,
+            hazards: Hazards::default(),
+        }];
+
+        let mut world = World::new(7, 1, 1, regions);
+        let mut rng = Stream::from(world.seed, STAGE, 4);
+
+        for _ in 0..3 {
+            let run = update(&mut world, &mut rng).expect("cryosphere update succeeds");
+            assert!(run.diff.melt_pulse.is_empty(), "no melt pulses expected");
+        }
+
+        assert!(
+            world.climate.snowpack_mm[0] > 0,
+            "snowpack cache should accumulate under persistent cold"
         );
     }
 }
