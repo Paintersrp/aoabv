@@ -6,3 +6,9 @@ Cargo.lock
 .vscode/
 /dist/
 /tmp/
+# data artifacts
+data/raw/
+data/processed/
+data/manifest/*.ndjson
+data/manifest/*.json
+/tmp/

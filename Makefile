@@ -32,3 +32,22 @@ golden: simstep
 clean:
 	rm -f $(SIMSTEP_OUT)
 	$(CARGO) clean
+
+.PHONY: data-validate data-plan data-manifest data-sample
+
+PY ?= python3
+
+data-validate:
+	$(PY) tools/datafetch/datafetch.py validate
+
+data-plan:
+	$(PY) tools/datafetch/datafetch.py plan --out -
+
+data-manifest:
+	$(PY) tools/datafetch/datafetch.py manifest --out data/manifest/data_manifest.json
+
+data-sample:
+	$(PY) tools/datafetch/datafetch.py validate --sample
+	$(PY) tools/datafetch/datafetch.py plan --sample --out -
+	$(PY) tools/datafetch/datafetch.py manifest --sample --out data/manifest/data_manifest.json
+	bash scripts/test_data_catalog.sh
