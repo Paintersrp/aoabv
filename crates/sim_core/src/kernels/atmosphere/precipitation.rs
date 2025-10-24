@@ -17,7 +17,7 @@ pub(super) struct PrecipitationOutcome {
 
 pub(super) fn commit(
     world: &World,
-    humidity: &[f64],
+    humidity_tenths: &[i32],
     seasonal: &SeasonalityContext,
     orography: &OrographyEffects,
     stream: &Stream,
@@ -28,10 +28,17 @@ pub(super) fn commit(
 
     for (index, region) in world.regions.iter().enumerate() {
         let mut commit_rng = stream.derive(index as u64);
-        let humidity_ratio = humidity[index].clamp(0.0, 1.0);
-        let humidity_tenths = (humidity_ratio * f64::from(HUMIDITY_TENTHS_MAX)).round() as i32;
-        let humidity_tenths = humidity_tenths.clamp(0, HUMIDITY_TENTHS_MAX);
-        diff.record_humidity(index, humidity_tenths);
+        let humidity_tenths_value = humidity_tenths[index].clamp(0, HUMIDITY_TENTHS_MAX);
+        let humidity_ratio = f64::from(humidity_tenths_value) / f64::from(HUMIDITY_TENTHS_MAX);
+        diff.record_humidity(index, humidity_tenths_value);
+        let capped_precip = i32::from(region.precipitation_mm).clamp(0, PRECIP_MAX_MM);
+        let precip_ratio = f64::from(capped_precip) / f64::from(PRECIP_MAX_MM);
+        let insolation_tenths = world
+            .climate
+            .last_insolation_tenths
+            .get(index)
+            .copied()
+            .unwrap_or(0);
 
         let effective_latitude =
             (region.latitude_deg - seasonal.hadley_lat_shift).clamp(-90.0, 90.0);
@@ -126,6 +133,15 @@ pub(super) fn commit(
                 )),
             ));
         }
+
+        diff.record_cause(Entry::new(
+            format!("region:{}/humidity", region.id),
+            Code::HumidityTransport,
+            Some(format!(
+                "precip_ratio={:.2};insolation_tenths={}",
+                precip_ratio, insolation_tenths
+            )),
+        ));
 
         let monsoon_strength = hadley * humidity_ratio;
         if hadley > MONSOON_STRENGTH_THRESHOLD && humidity_ratio >= MONSOON_HUMIDITY_THRESHOLD {

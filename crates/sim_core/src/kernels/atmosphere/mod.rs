@@ -127,6 +127,10 @@ mod tests {
         ];
         let mut world = World::new(7, 3, 1, regions);
         world.tick = 3;
+        world.climate.last_insolation_tenths.fill(12_800);
+        for region in &mut world.regions {
+            region.precipitation_mm = 1_200;
+        }
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
         let run = update(&world, &mut rng).expect("atmosphere update succeeds");
@@ -162,6 +166,10 @@ mod tests {
             .causes
             .iter()
             .any(|entry| entry.code == Code::MonsoonOnset));
+        assert!(diff
+            .causes
+            .iter()
+            .any(|entry| entry.code == Code::HumidityTransport));
         assert_eq!(run.chronicle.len(), 1);
     }
 
@@ -219,6 +227,10 @@ mod tests {
         ];
         let mut world = World::new(11, 3, 1, regions);
         world.tick = 7;
+        world.climate.last_insolation_tenths = vec![12_400, 12_550, 12_700];
+        for (i, region) in world.regions.iter_mut().enumerate() {
+            region.precipitation_mm = 900 + (i as u16) * 75;
+        }
 
         let mut rng_a = Stream::from(world.seed, STAGE, 4);
         let mut rng_b = Stream::from(world.seed, STAGE, 4);
@@ -231,6 +243,11 @@ mod tests {
         assert_eq!(run_a.diff.humidity, run_b.diff.humidity);
         assert_eq!(run_a.diff.causes, run_b.diff.causes);
         assert_eq!(run_a.chronicle, run_b.chronicle);
+        assert!(run_a
+            .diff
+            .causes
+            .iter()
+            .any(|entry| entry.code == Code::HumidityTransport));
     }
 
     #[test]
