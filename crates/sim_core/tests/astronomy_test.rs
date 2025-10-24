@@ -86,12 +86,14 @@ fn astronomy_diff_is_repeatable_and_integral() {
     let tick = 17;
 
     let mut rng_first = Stream::from(world.seed, STAGE, tick);
-    let (diff_first, chron_first) =
-        astronomy::update(&world, &mut rng_first).expect("astronomy update succeeds");
+    let run_first = astronomy::update(&world, &mut rng_first).expect("astronomy update succeeds");
+    let diff_first = run_first.diff;
+    let chron_first = run_first.chronicle;
 
     let mut rng_second = Stream::from(world.seed, STAGE, tick);
-    let (diff_second, chron_second) =
-        astronomy::update(&world, &mut rng_second).expect("astronomy update succeeds");
+    let run_second = astronomy::update(&world, &mut rng_second).expect("astronomy update succeeds");
+    let diff_second = run_second.diff;
+    let chron_second = run_second.chronicle;
 
     let diff_json_first = serde_json::to_value(&diff_first).expect("serialize diff");
     let diff_json_second = serde_json::to_value(&diff_second).expect("serialize diff");

@@ -4,6 +4,7 @@ use crate::cause::{Code, Entry};
 use crate::diff::Diff;
 use crate::fixed::{resource_ratio, WATER_MAX};
 use crate::rng::{stream_label, Stream};
+use crate::schedule::KernelRun;
 use crate::world::World;
 
 pub const STAGE: &str = "kernel:atmosphere";
@@ -142,11 +143,11 @@ fn region_index_at(world: &World, x: i32, y: i32) -> Option<usize> {
         .map(|(index, _)| index)
 }
 
-pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
+pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
     let total_regions = world.regions.len();
     if total_regions == 0 {
-        return Ok(diff);
+        return Ok(KernelRun::new(diff));
     }
 
     let seasonal = seasonal_scalar(world.tick);
@@ -221,6 +222,9 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
             }
         }
     }
+
+    let mut chronicle = Vec::new();
+    let mut monsoon_regions = 0usize;
 
     for (index, region) in world.regions.iter().enumerate() {
         let mut commit_rng = commit_stream.derive(index as u64);
@@ -325,10 +329,28 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
                 Code::MonsoonOnset,
                 Some(format!("intensity={:.2}", monsoon_strength)),
             ));
+            monsoon_regions += 1;
         }
     }
 
-    Ok(diff)
+    let summary = if monsoon_regions > 0 {
+        format!(
+            "Hadley cells shifted {:+.1}°; monsoons intensified across {} regions.",
+            hadley_lat_shift, monsoon_regions
+        )
+    } else {
+        format!(
+            "Hadley cells shifted {:+.1}°; seasonal scalar {:+.2}.",
+            hadley_lat_shift, seasonal
+        )
+    };
+    chronicle.push(summary);
+
+    Ok(KernelRun {
+        diff,
+        chronicle,
+        highlights: Vec::new(),
+    })
 }
 
 #[cfg(test)]
@@ -394,7 +416,8 @@ mod tests {
         world.tick = 3;
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
-        let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
+        let run = update(&world, &mut rng).expect("atmosphere update succeeds");
+        let diff = run.diff;
 
         assert!(!diff.temperature.is_empty(), "temperature map populated");
         assert!(
@@ -426,6 +449,7 @@ mod tests {
             .causes
             .iter()
             .any(|entry| entry.code == Code::MonsoonOnset));
+        assert_eq!(run.chronicle.len(), 1);
     }
 
     #[test]
@@ -486,13 +510,14 @@ mod tests {
         let mut rng_a = Stream::from(world.seed, STAGE, 4);
         let mut rng_b = Stream::from(world.seed, STAGE, 4);
 
-        let diff_a = update(&world, &mut rng_a).expect("first pass succeeds");
-        let diff_b = update(&world, &mut rng_b).expect("second pass succeeds");
+        let run_a = update(&world, &mut rng_a).expect("first pass succeeds");
+        let run_b = update(&world, &mut rng_b).expect("second pass succeeds");
 
-        assert_eq!(diff_a.temperature, diff_b.temperature);
-        assert_eq!(diff_a.precipitation, diff_b.precipitation);
-        assert_eq!(diff_a.humidity, diff_b.humidity);
-        assert_eq!(diff_a.causes, diff_b.causes);
+        assert_eq!(run_a.diff.temperature, run_b.diff.temperature);
+        assert_eq!(run_a.diff.precipitation, run_b.diff.precipitation);
+        assert_eq!(run_a.diff.humidity, run_b.diff.humidity);
+        assert_eq!(run_a.diff.causes, run_b.diff.causes);
+        assert_eq!(run_a.chronicle, run_b.chronicle);
     }
 
     #[test]
@@ -534,7 +559,9 @@ mod tests {
             let width = regions.len() as u32;
             let world = World::new(29, width.max(1), 1, regions);
             let mut rng = Stream::from(world.seed, STAGE, 2);
-            let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
+            let diff = update(&world, &mut rng)
+                .expect("atmosphere update succeeds")
+                .diff;
 
             for value in diff.humidity {
                 prop_assert!(value.value >= 0);
@@ -581,7 +608,9 @@ mod tests {
         ];
         let world = World::new(47, 2, 1, regions);
         let mut rng = Stream::from(world.seed, STAGE, 3);
-        let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
+        let diff = update(&world, &mut rng)
+            .expect("atmosphere update succeeds")
+            .diff;
         let frame = make_frame(
             world.tick,
             diff,
@@ -653,7 +682,9 @@ mod tests {
         let mut world = World::new(19, 3, 1, regions);
         world.tick = 5;
         let mut rng = Stream::from(world.seed, STAGE, 5);
-        let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
+        let diff = update(&world, &mut rng)
+            .expect("atmosphere update succeeds")
+            .diff;
 
         for value in &diff.temperature {
             assert!(
