@@ -16,6 +16,8 @@ pub struct Diff {
     pub elevation: Vec<ScalarValue>,
     pub temperature: Vec<ScalarValue>,
     pub precipitation: Vec<ScalarValue>,
+    pub albedo: Vec<ScalarValue>,
+    pub freshwater_flux: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
     pub causes: Vec<Entry>,
 }
@@ -57,6 +59,14 @@ impl Diff {
 
     pub fn record_precipitation(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.precipitation, region_index as u32, value);
+    }
+
+    pub fn record_albedo(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.albedo, region_index as u32, value);
+    }
+
+    pub fn record_freshwater_flux(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.freshwater_flux, region_index as u32, value);
     }
 
     pub fn record_hazard(&mut self, region_index: usize, drought: u16, flood: u16) {
@@ -129,6 +139,12 @@ impl Diff {
         for scalar in &other.precipitation {
             Self::set_scalar_value(&mut self.precipitation, scalar.region, scalar.value);
         }
+        for scalar in &other.albedo {
+            Self::set_scalar_value(&mut self.albedo, scalar.region, scalar.value);
+        }
+        for scalar in &other.freshwater_flux {
+            Self::set_scalar_value(&mut self.freshwater_flux, scalar.region, scalar.value);
+        }
         for hazard in &other.hazards {
             self.record_hazard(hazard.region as usize, hazard.drought, hazard.flood);
         }
@@ -150,6 +166,8 @@ impl Diff {
             && self.elevation.is_empty()
             && self.temperature.is_empty()
             && self.precipitation.is_empty()
+            && self.albedo.is_empty()
+            && self.freshwater_flux.is_empty()
             && self.hazards.is_empty()
             && self.causes.is_empty()
     }
@@ -240,6 +258,12 @@ impl Serialize for Diff {
         if !self.precipitation.is_empty() {
             field_count += 1;
         }
+        if !self.albedo.is_empty() {
+            field_count += 1;
+        }
+        if !self.freshwater_flux.is_empty() {
+            field_count += 1;
+        }
         if !self.hazards.is_empty() {
             field_count += 1;
         }
@@ -267,6 +291,12 @@ impl Serialize for Diff {
         }
         if !self.precipitation.is_empty() {
             state.serialize_field("precip", &ScalarValues(&self.precipitation))?;
+        }
+        if !self.albedo.is_empty() {
+            state.serialize_field("albedo", &ScalarValues(&self.albedo))?;
+        }
+        if !self.freshwater_flux.is_empty() {
+            state.serialize_field("freshwater_flux", &ScalarValues(&self.freshwater_flux))?;
         }
         if !self.hazards.is_empty() {
             state.serialize_field("hazards", &self.hazards)?;

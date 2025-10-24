@@ -13,6 +13,9 @@
 | `soil_fertility_low` | ecology | Soil value fell below the fertility floor (2_500). |
 | `drought_flag` | ecology | Water level under 7_000 (scaled) after ecology adjustments. |
 | `flood_flag` | ecology | Water level above 8_500 (scaled) after ecology adjustments. |
+| `albedo_feedback` | cryosphere | Surface albedo updated from snow/ice coverage; note records `milli=<value>`. |
+| `glacier_mass_balance` | cryosphere | Degree-day accumulation versus melt; note records `balance_mm`. |
+| `freshwater_pulse` | cryosphere | Freshwater discharge from ice melt; note records `tenths_mm`. |
 | `era_end` | meta | Reserved for future milestones (unused in v0.0). |
 | `stagnation_warning` | meta | Reserved hook for growth stalls (unused in v0.0). |
 | `collapse_warning` | meta | Reserved hook for catastrophic collapse (unused in v0.0). |

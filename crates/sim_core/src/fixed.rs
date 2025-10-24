@@ -4,6 +4,12 @@ pub const WATER_MAX: u16 = 10_000;
 /// Upper bound for the soil meter (0.0 - 1.0 scaled by 10_000).
 pub const SOIL_MAX: u16 = 10_000;
 
+/// Upper bound for snow/ice albedo values represented in milli-units.
+pub const ALBEDO_MAX: u16 = 1_000;
+
+/// Upper bound for freshwater flux pulses represented in tenths of millimetres.
+pub const FRESHWATER_FLUX_MAX: u16 = 2_000;
+
 /// Clamp an integer value to a bounded `u16` range.
 pub fn clamp_u16(value: i32, min: u16, max: u16) -> u16 {
     debug_assert!(min <= max);

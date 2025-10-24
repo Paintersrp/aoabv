@@ -47,6 +47,10 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub precip: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub albedo: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub freshwater_flux: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub soil: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub water: BTreeMap<String, i32>,
@@ -60,6 +64,8 @@ impl FrameDiff {
             && self.elevation.is_empty()
             && self.temp.is_empty()
             && self.precip.is_empty()
+            && self.albedo.is_empty()
+            && self.freshwater_flux.is_empty()
             && self.soil.is_empty()
             && self.water.is_empty()
     }
@@ -122,6 +128,16 @@ pub fn make_frame(
     for value in diff.precipitation {
         frame_diff
             .precip
+            .insert(World::region_key(value.region as usize), value.value);
+    }
+    for value in diff.albedo {
+        frame_diff
+            .albedo
+            .insert(World::region_key(value.region as usize), value.value);
+    }
+    for value in diff.freshwater_flux {
+        frame_diff
+            .freshwater_flux
             .insert(World::region_key(value.region as usize), value.value);
     }
     for delta in diff.soil {
@@ -198,6 +214,8 @@ mod tests {
         diff.record_elevation(2, 987);
         diff.record_temperature(3, 156);
         diff.record_precipitation(0, 2_345);
+        diff.record_albedo(1, 875);
+        diff.record_freshwater_flux(2, 1_234);
 
         let frame = make_frame(5, diff, Vec::new(), Vec::new(), false, 8, 4);
         let json_line = frame.to_ndjson().expect("frame serializes");
@@ -240,5 +258,19 @@ mod tests {
             .as_object()
             .expect("precip is object");
         assert_eq!(precip.get("r:0").and_then(|v| v.as_i64()), Some(2_345));
+
+        let albedo = diff_map
+            .get("albedo")
+            .expect("albedo map present")
+            .as_object()
+            .expect("albedo is object");
+        assert_eq!(albedo.get("r:1").and_then(|v| v.as_i64()), Some(875));
+
+        let freshwater = diff_map
+            .get("freshwater_flux")
+            .expect("freshwater map present")
+            .as_object()
+            .expect("freshwater is object");
+        assert_eq!(freshwater.get("r:2").and_then(|v| v.as_i64()), Some(1_234));
     }
 }

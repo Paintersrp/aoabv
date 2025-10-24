@@ -1,7 +1,7 @@
 use crate::diff::Diff;
 use crate::fixed::{
-    clamp_biome_index, clamp_hazard_meter, clamp_i16, clamp_u16, commit_resource_delta, SOIL_MAX,
-    WATER_MAX,
+    clamp_biome_index, clamp_hazard_meter, clamp_i16, clamp_u16, commit_resource_delta, ALBEDO_MAX,
+    FRESHWATER_FLUX_MAX, SOIL_MAX, WATER_MAX,
 };
 use crate::world::World;
 
@@ -18,6 +18,8 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.elevation.sort_by_key(|value| value.region);
     diff.temperature.sort_by_key(|value| value.region);
     diff.precipitation.sort_by_key(|value| value.region);
+    diff.albedo.sort_by_key(|value| value.region);
+    diff.freshwater_flux.sort_by_key(|value| value.region);
     diff.hazards.sort_by_key(|hazard| hazard.region);
 
     for change in diff.biome {
@@ -57,6 +59,18 @@ pub fn apply(world: &mut World, mut diff: Diff) {
         }
     }
 
+    for value in diff.albedo {
+        if let Some(region) = world.regions.get_mut(value.region as usize) {
+            region.albedo_milli = clamp_u16(value.value, 0, ALBEDO_MAX);
+        }
+    }
+
+    for value in diff.freshwater_flux {
+        if let Some(region) = world.regions.get_mut(value.region as usize) {
+            region.freshwater_flux_tenths_mm = clamp_u16(value.value, 0, FRESHWATER_FLUX_MAX);
+        }
+    }
+
     for hazard in diff.hazards {
         if let Some(region) = world.regions.get_mut(hazard.region as usize) {
             region.hazards.drought = clamp_hazard_meter(hazard.drought);
@@ -84,6 +98,8 @@ mod tests {
                 soil: 9_000,
                 temperature_tenths_c: 0,
                 precipitation_mm: 0,
+                albedo_milli: 350,
+                freshwater_flux_tenths_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -97,6 +113,8 @@ mod tests {
                 soil: 100,
                 temperature_tenths_c: 0,
                 precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -110,6 +128,8 @@ mod tests {
                 soil: 6_000,
                 temperature_tenths_c: 0,
                 precipitation_mm: 0,
+                albedo_milli: 370,
+                freshwater_flux_tenths_mm: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -123,6 +143,8 @@ mod tests {
                 soil: 5_000,
                 temperature_tenths_c: 0,
                 precipitation_mm: 0,
+                albedo_milli: 380,
+                freshwater_flux_tenths_mm: 0,
                 hazards: Hazards::default(),
             },
         ];

@@ -5,7 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use crate::fixed::{clamp_u16, SOIL_MAX, WATER_MAX};
+use crate::fixed::{clamp_u16, ALBEDO_MAX, FRESHWATER_FLUX_MAX, SOIL_MAX, WATER_MAX};
 use crate::rng::Stream;
 use crate::world::{Hazards, Region, World};
 
@@ -62,6 +62,16 @@ pub fn build_world(seed: &Seed, world_seed_override: Option<u64>) -> World {
             let elevation = sample_elevation(world_seed, &seed.noise, x, y);
             let (water, soil) =
                 initial_resources(world_seed, &seed.humidity, latitude, elevation, x, y);
+            let polar_factor = (latitude.abs() / 90.0).clamp(0.0, 1.0);
+            let mut cryosphere_rng = Stream::from(world_seed, "seed:cryosphere", u64::from(id));
+            let albedo_noise = cryosphere_rng.next_signed_unit() * 25.0;
+            let albedo = clamp_u16(
+                (300.0 + 500.0 * polar_factor + albedo_noise).round() as i32,
+                0,
+                ALBEDO_MAX,
+            );
+            let freshwater_flux = clamp_u16(0, 0, FRESHWATER_FLUX_MAX);
+
             regions.push(Region {
                 id,
                 x,
@@ -73,6 +83,8 @@ pub fn build_world(seed: &Seed, world_seed_override: Option<u64>) -> World {
                 soil,
                 temperature_tenths_c: 0,
                 precipitation_mm: 0,
+                albedo_milli: albedo,
+                freshwater_flux_tenths_mm: freshwater_flux,
                 hazards: Hazards::default(),
             });
             id += 1;

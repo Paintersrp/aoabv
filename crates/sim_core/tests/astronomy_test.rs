@@ -20,6 +20,8 @@ fn sample_world() -> World {
             soil: 5_200,
             temperature_tenths_c: 0,
             precipitation_mm: 0,
+            albedo_milli: 400,
+            freshwater_flux_tenths_mm: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -33,6 +35,8 @@ fn sample_world() -> World {
             soil: 5_000,
             temperature_tenths_c: 0,
             precipitation_mm: 0,
+            albedo_milli: 400,
+            freshwater_flux_tenths_mm: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -46,6 +50,8 @@ fn sample_world() -> World {
             soil: 4_900,
             temperature_tenths_c: 0,
             precipitation_mm: 0,
+            albedo_milli: 400,
+            freshwater_flux_tenths_mm: 0,
             hazards: Hazards::default(),
         },
     ];

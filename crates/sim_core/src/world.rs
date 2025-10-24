@@ -29,6 +29,8 @@ pub struct Region {
     pub soil: u16,
     pub temperature_tenths_c: i16,
     pub precipitation_mm: u16,
+    pub albedo_milli: u16,
+    pub freshwater_flux_tenths_mm: u16,
     pub hazards: Hazards,
 }
 
