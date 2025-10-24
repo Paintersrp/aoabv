@@ -1,7 +1,9 @@
 use crate::cause::{Code, Entry};
 use crate::diff::Diff;
 use crate::fixed::{clamp_hazard_meter, clamp_u16, resource_ratio, SOIL_MAX, WATER_MAX};
+use crate::io::frame::Highlight;
 use crate::rng::Stream;
+use crate::schedule::KernelRun;
 use crate::world::World;
 use anyhow::{ensure, Result};
 
@@ -68,8 +70,10 @@ fn profile_for_biome(biome: u8) -> BiomeProfile {
     }
 }
 
-pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
+pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
+    let mut chronicle = Vec::new();
+    let mut highlights = Vec::new();
 
     for (index, region) in world.regions.iter().enumerate() {
         ensure!(
@@ -133,11 +137,23 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
                 Code::DroughtFlag,
                 Some(format!("level={}", drought_level)),
             ));
+            chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
+            highlights.push(Highlight::hazard(
+                region.id,
+                "drought",
+                drought_level as f32 / WATER_MAX as f32,
+            ));
         } else if flood_level > FLOOD_ALERT_THRESHOLD {
             diff.record_cause(Entry::new(
                 format!("region:{}/water", region.id),
                 Code::FloodFlag,
                 Some(format!("level={}", flood_level)),
+            ));
+            chronicle.push(format!("Region {} endures seasonal floods.", region.id));
+            highlights.push(Highlight::hazard(
+                region.id,
+                "flood",
+                flood_level as f32 / WATER_MAX as f32,
             ));
         }
 
@@ -150,7 +166,11 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
         }
     }
 
-    Ok(diff)
+    Ok(KernelRun {
+        diff,
+        chronicle,
+        highlights,
+    })
 }
 
 #[cfg(test)]
@@ -184,8 +204,8 @@ mod tests {
             }],
         );
         let mut rng = Stream::from(world.seed, STAGE, 1);
-        let diff = update(&world, &mut rng).unwrap();
-        let water_delta = diff.water.first().map(|delta| delta.delta).unwrap_or(0);
+        let run = update(&world, &mut rng).unwrap();
+        let water_delta = run.diff.water.first().map(|delta| delta.delta).unwrap_or(0);
         assert!(water_delta.is_positive());
     }
 
@@ -219,7 +239,7 @@ mod tests {
                 }],
             );
             let mut rng = Stream::from(world.seed, STAGE, 1);
-            let diff = update(&world, &mut rng).unwrap();
+            let diff = update(&world, &mut rng).unwrap().diff;
             let water_delta = diff
                 .water
                 .first()
@@ -282,15 +302,16 @@ mod tests {
         let mut rng = Stream::from(world.seed, STAGE, 1);
         let expected_levels = [3_000, 1_500, 750, 375, 187, 93, 46, 23, 11, 5, 2, 1, 0];
         for &expected in &expected_levels {
-            let diff = update(&world, &mut rng).expect("ecology update");
-            let hazard = diff
+            let run = update(&world, &mut rng).expect("ecology update");
+            let hazard = run
+                .diff
                 .hazards
                 .iter()
                 .find(|event| event.region == 0)
                 .map(|event| event.flood);
 
             assert_eq!(hazard.unwrap_or(0), expected);
-            reduce::apply(&mut world, diff);
+            reduce::apply(&mut world, run.diff.clone());
             assert_eq!(world.regions[0].hazards.flood, expected);
         }
     }

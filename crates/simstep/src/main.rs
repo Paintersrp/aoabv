@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use sim_core::io::frame::make_frame;
 use sim_core::io::seed::{build_world, Seed};
-use sim_core::{collect_highlights, tick_once};
+use sim_core::tick_once;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -49,8 +49,7 @@ fn main() -> Result<()> {
     for _ in 0..args.ticks {
         let next_tick = world.tick + 1;
         let seed = world.seed;
-        let (diff, chronicle) = tick_once(&mut world, seed, next_tick)?;
-        let highlights = collect_highlights(&world, &diff);
+        let (diff, chronicle, highlights) = tick_once(&mut world, seed, next_tick)?;
 
         let width = world.width;
         let height = world.height;

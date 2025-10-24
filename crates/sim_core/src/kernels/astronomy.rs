@@ -3,6 +3,7 @@ use anyhow::{ensure, Result};
 use crate::cause::{Code, Entry};
 use crate::diff::Diff;
 use crate::rng::Stream;
+use crate::schedule::KernelRun;
 use crate::world::World;
 
 pub const STAGE: &str = "kernel:astronomy";
@@ -22,7 +23,7 @@ fn to_tenths(value: f64) -> i32 {
     (value * 10.0).round() as i32
 }
 
-pub fn update(world: &World, rng: &mut Stream) -> Result<(Diff, Vec<String>)> {
+pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
     let mut chronicle = Vec::new();
 
@@ -101,7 +102,11 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<(Diff, Vec<String>)> {
         obliquity_delta, precession_phase, tide_summary
     ));
 
-    Ok((diff, chronicle))
+    Ok(KernelRun {
+        diff,
+        chronicle,
+        highlights: Vec::new(),
+    })
 }
 
 #[cfg(test)]
@@ -149,7 +154,9 @@ mod tests {
         let world = World::new(0, 2, 1, regions);
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
-        let (diff, chronicle) = update(&world, &mut rng).expect("astronomy update succeeds");
+        let run = update(&world, &mut rng).expect("astronomy update succeeds");
+        let diff = run.diff;
+        let chronicle = run.chronicle;
 
         assert_eq!(diff.insolation.len(), 2);
         assert_eq!(diff.tide_envelope.len(), 2);

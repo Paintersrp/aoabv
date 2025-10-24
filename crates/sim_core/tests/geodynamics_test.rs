@@ -88,12 +88,16 @@ fn geodynamics_outputs_are_deterministic_for_seed_and_tick() {
     let tick = 512;
 
     let mut rng_first = Stream::from(world.seed, STAGE, tick);
-    let (diff_first, chron_first) =
+    let run_first =
         geodynamics::update(&world, &mut rng_first).expect("geodynamics update succeeds");
+    let diff_first = run_first.diff;
+    let chron_first = run_first.chronicle;
 
     let mut rng_second = Stream::from(world.seed, STAGE, tick);
-    let (diff_second, chron_second) =
+    let run_second =
         geodynamics::update(&world, &mut rng_second).expect("geodynamics update succeeds");
+    let diff_second = run_second.diff;
+    let chron_second = run_second.chronicle;
 
     assert_eq!(serialize_diff(&diff_first), serialize_diff(&diff_second));
     assert_eq!(chron_first, chron_second);
@@ -106,10 +110,9 @@ fn geodynamics_elevation_adjustments_remain_bounded() {
     let mut triggered = None;
     for tick in 1..=20_000 {
         let mut rng = Stream::from(world.seed, STAGE, tick);
-        let (diff, _chronicle) =
-            geodynamics::update(&world, &mut rng).expect("geodynamics update succeeds");
-        if !diff.elevation.is_empty() {
-            triggered = Some(diff);
+        let run = geodynamics::update(&world, &mut rng).expect("geodynamics update succeeds");
+        if !run.diff.elevation.is_empty() {
+            triggered = Some(run.diff);
             break;
         }
     }
@@ -134,8 +137,9 @@ fn geodynamics_handles_event_hits_and_misses() {
     let mut hit_chronicle = None;
     for tick in 1..=20_000 {
         let mut rng = Stream::from(world.seed, STAGE, tick);
-        let (diff, chronicle) =
-            geodynamics::update(&world, &mut rng).expect("geodynamics update succeeds");
+        let run = geodynamics::update(&world, &mut rng).expect("geodynamics update succeeds");
+        let diff = run.diff;
+        let chronicle = run.chronicle;
         if diff.elevation.is_empty() {
             if miss_tick.is_none() {
                 miss_tick = Some((tick, diff.clone(), chronicle.clone()));
@@ -173,10 +177,9 @@ fn geodynamics_handles_event_hits_and_misses() {
 
     // Determinism: rerun the hit tick and ensure it matches cached results.
     let mut rng = Stream::from(world.seed, STAGE, hit_tick);
-    let (repeat_diff, repeat_chronicle) =
-        geodynamics::update(&world, &mut rng).expect("geodynamics update succeeds");
-    assert_eq!(serialize_diff(&repeat_diff), serialize_diff(&hit_diff));
-    assert_eq!(repeat_chronicle, hit_chronicle);
+    let repeat_run = geodynamics::update(&world, &mut rng).expect("geodynamics update succeeds");
+    assert_eq!(serialize_diff(&repeat_run.diff), serialize_diff(&hit_diff));
+    assert_eq!(repeat_run.chronicle, hit_chronicle);
 
     // Ensure the no-hit tick differs from the event tick.
     assert_ne!(miss_tick, hit_tick);

@@ -5,27 +5,28 @@ pub mod io;
 pub mod kernels;
 pub mod reduce;
 pub mod rng;
+pub mod schedule;
 pub mod world;
 
 use anyhow::{ensure, Result};
 use diff::Diff;
-use fixed::WATER_MAX;
 use io::frame::Highlight;
-use kernels::{
-    astronomy, atmosphere, climate, cryosphere,
-    ecology::{self, DROUGHT_ALERT_THRESHOLD, FLOOD_ALERT_THRESHOLD},
-    geodynamics,
-};
+use kernels::{astronomy, atmosphere, climate, cryosphere, ecology, geodynamics};
 use reduce::apply;
 use rng::{stream_label, Stream};
+use schedule::run_kernel;
 use world::World;
 
 /// Execute a single deterministic simulation tick.
 ///
 /// This function orchestrates the kernel update order and commits their diffs to the
-/// provided [`World`]. The returned [`Diff`] captures all changes applied during the
-/// tick, while the [`Vec<String>`] contains chronicle notes summarising notable events.
-pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<String>)> {
+/// provided [`World`]. The returned tuple captures all changes applied during the
+/// tick alongside the chronicle snippets and highlights surfaced by the kernels.
+pub fn tick_once(
+    world: &mut World,
+    seed: u64,
+    tick: u64,
+) -> Result<(Diff, Vec<String>, Vec<Highlight>)> {
     ensure!(
         tick == world.tick + 1,
         "tick_once called with out-of-order tick: current={} requested={}",
@@ -35,69 +36,77 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
 
     let mut aggregate_diff = Diff::default();
     let mut chronicle = Vec::new();
+    let mut highlights = Vec::new();
 
     let climate_stage_rng = Stream::from(seed, climate::STAGE, tick);
 
     // Astronomy kernel establishes irradiance and tide envelopes.
-    let mut astronomy_rng = climate_stage_rng.derive(stream_label(astronomy::STAGE));
-    let (astronomy_diff, mut astronomy_chronicle) = astronomy::update(world, &mut astronomy_rng)?;
-    chronicle.append(&mut astronomy_chronicle);
-    aggregate_diff.merge(&astronomy_diff);
-    apply(world, astronomy_diff);
+    let astronomy_run = run_kernel(
+        world,
+        &mut aggregate_diff,
+        &climate_stage_rng,
+        astronomy::STAGE,
+        |world, rng| astronomy::update(&*world, rng),
+    )?;
+    chronicle.extend(astronomy_run.chronicle);
+    highlights.extend(astronomy_run.highlights);
 
     // Geodynamics kernel adjusts topography before climate updates.
-    let mut geodynamics_rng = climate_stage_rng.derive(stream_label(geodynamics::STAGE));
-    let (geodynamics_diff, mut geodynamics_chronicle) =
-        geodynamics::update(world, &mut geodynamics_rng)?;
-    chronicle.append(&mut geodynamics_chronicle);
-    aggregate_diff.merge(&geodynamics_diff);
-    apply(world, geodynamics_diff);
+    let geodynamics_run = run_kernel(
+        world,
+        &mut aggregate_diff,
+        &climate_stage_rng,
+        geodynamics::STAGE,
+        |world, rng| geodynamics::update(&*world, rng),
+    )?;
+    chronicle.extend(geodynamics_run.chronicle);
+    highlights.extend(geodynamics_run.highlights);
 
     // Atmospheric energy balance precedes climate classification.
-    let mut atmosphere_rng = climate_stage_rng.derive(stream_label(atmosphere::STAGE));
-    let atmosphere_diff = atmosphere::update(world, &mut atmosphere_rng)?;
-    aggregate_diff.merge(&atmosphere_diff);
-    apply(world, atmosphere_diff);
-    chronicle.push("Hadley cells formed; monsoon rains swept low latitudes.".to_string());
+    let atmosphere_run = run_kernel(
+        world,
+        &mut aggregate_diff,
+        &climate_stage_rng,
+        atmosphere::STAGE,
+        |world, rng| atmosphere::update(&*world, rng),
+    )?;
+    chronicle.extend(atmosphere_run.chronicle);
+    highlights.extend(atmosphere_run.highlights);
 
-    let mut cryosphere_rng = climate_stage_rng.derive(stream_label(cryosphere::STAGE));
-    let cryosphere_diff = cryosphere::update(world, &mut cryosphere_rng)?;
-    aggregate_diff.merge(&cryosphere_diff);
-    apply(world, cryosphere_diff);
-    chronicle.push(cryosphere::CHRONICLE_LINE.to_string());
+    let cryosphere_run = run_kernel(
+        world,
+        &mut aggregate_diff,
+        &climate_stage_rng,
+        cryosphere::STAGE,
+        |world, rng| cryosphere::update(&*world, rng),
+    )?;
+    chronicle.extend(cryosphere_run.chronicle);
+    highlights.extend(cryosphere_run.highlights);
 
     let albedo_reconcile_diff = climate::albedo_reconcile(world)?;
     aggregate_diff.merge(&albedo_reconcile_diff);
     apply(world, albedo_reconcile_diff);
 
-    // Climate kernel.
-    let mut climate_rng = climate_stage_rng.derive(stream_label("kernel:climate/core"));
-    let climate_diff = climate::update(world, &mut climate_rng)?;
-    for change in &climate_diff.biome {
-        if let Some(region) = world.regions.get(change.region as usize) {
-            chronicle.push(format!(
-                "Region {} shifted biome to {}",
-                region.id, change.biome
-            ));
-        }
-    }
-    aggregate_diff.merge(&climate_diff);
-    apply(world, climate_diff);
+    let climate_run = run_kernel(
+        world,
+        &mut aggregate_diff,
+        &climate_stage_rng,
+        climate::CORE_STAGE,
+        |world, rng| climate::update(&*world, rng),
+    )?;
+    chronicle.extend(climate_run.chronicle);
+    highlights.extend(climate_run.highlights);
 
     // Ecology kernel uses the climate-updated world state.
-    let mut ecology_rng = climate_stage_rng.derive(stream_label(ecology::STAGE));
-    let ecology_diff = ecology::update(world, &mut ecology_rng)?;
-    for hazard in &ecology_diff.hazards {
-        if let Some(region) = world.regions.get(hazard.region as usize) {
-            if hazard.drought > DROUGHT_ALERT_THRESHOLD {
-                chronicle.push(format!("Region {} faces an extended dry spell.", region.id));
-            } else if hazard.flood > FLOOD_ALERT_THRESHOLD {
-                chronicle.push(format!("Region {} endures seasonal floods.", region.id));
-            }
-        }
-    }
-    aggregate_diff.merge(&ecology_diff);
-    apply(world, ecology_diff);
+    let ecology_run = run_kernel(
+        world,
+        &mut aggregate_diff,
+        &climate_stage_rng,
+        ecology::STAGE,
+        |world, rng| ecology::update(&*world, rng),
+    )?;
+    chronicle.extend(ecology_run.chronicle);
+    highlights.extend(ecology_run.highlights);
 
     // Chronicle stream reserved for downstream narrative kernels.
     let mut chronicle_rng = climate_stage_rng.derive(stream_label("kernel:chronicle"));
@@ -105,30 +114,7 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
 
     world.tick = tick;
 
-    Ok((aggregate_diff, chronicle))
-}
-
-/// Derive visual highlights for a frame from the applied diff.
-pub fn collect_highlights(world: &World, diff: &Diff) -> Vec<Highlight> {
-    let mut highlights = Vec::new();
-    for hazard in &diff.hazards {
-        if let Some(region) = world.regions.get(hazard.region as usize) {
-            if hazard.drought > DROUGHT_ALERT_THRESHOLD {
-                highlights.push(Highlight::hazard(
-                    region.id,
-                    "drought",
-                    hazard.drought as f32 / WATER_MAX as f32,
-                ));
-            } else if hazard.flood > FLOOD_ALERT_THRESHOLD {
-                highlights.push(Highlight::hazard(
-                    region.id,
-                    "flood",
-                    hazard.flood as f32 / WATER_MAX as f32,
-                ));
-            }
-        }
-    }
-    highlights
+    Ok((aggregate_diff, chronicle, highlights))
 }
 
 #[cfg(test)]
@@ -150,7 +136,7 @@ mod tests {
         let prev_tick = world.tick;
         let next_tick = prev_tick + 1;
         let seed = world.seed;
-        let (_diff, _chronicle) = tick_once(&mut world, seed, next_tick).unwrap();
+        let (_diff, _chronicle, _highlights) = tick_once(&mut world, seed, next_tick).unwrap();
         assert_eq!(world.tick, next_tick);
     }
 }

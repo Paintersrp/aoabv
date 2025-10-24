@@ -2,11 +2,13 @@ use crate::cause::{Code, Entry};
 use crate::diff::{DiagEnergy, Diff};
 use crate::fixed::{resource_ratio, WATER_MAX};
 use crate::rng::Stream;
+use crate::schedule::KernelRun;
 use crate::world::{Region, World};
 use anyhow::{ensure, Result};
 
 pub const STAGE: &str = "kernel:climate";
 pub const ALBEDO_RECONCILE_STAGE: &str = "kernel:climate/albedo_reconcile";
+pub const CORE_STAGE: &str = "kernel:climate/core";
 const BASELINE_LIMIT_TENTHS: i32 = 120;
 
 enum LatitudeBelt {
@@ -82,6 +84,17 @@ fn classify_biome(belt: &LatitudeBelt, dryness: f64) -> u8 {
             }
         }
         LatitudeBelt::Polar => 0,
+    }
+}
+
+fn biome_label(biome: u8) -> &'static str {
+    match biome {
+        5 => "rainforest",
+        4 => "desert",
+        3 => "steppe",
+        2 => "temperate",
+        1 => "boreal",
+        _ => "polar",
     }
 }
 
@@ -184,8 +197,9 @@ pub fn albedo_reconcile(world: &mut World) -> Result<Diff> {
 
     Ok(diff)
 }
-pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
+pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
+    let mut chronicle = Vec::new();
 
     for (index, region) in world.regions.iter().enumerate() {
         ensure!(
@@ -202,6 +216,11 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
         let orographic_lift = orographic_lift_indicator(world, region);
         if biome != region.biome {
             diff.record_biome(region.index(), biome);
+            chronicle.push(format!(
+                "Region {} shifted toward a {} biome.",
+                region.id,
+                biome_label(biome)
+            ));
         }
         diff.record_cause(Entry::new(
             format!("region:{}/biome", region.id),
@@ -220,7 +239,11 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
         ));
     }
 
-    Ok(diff)
+    Ok(KernelRun {
+        diff,
+        chronicle,
+        highlights: Vec::new(),
+    })
 }
 
 #[cfg(test)]
@@ -303,7 +326,8 @@ mod tests {
         let world = World::new(TEST_SEED, belt_cases.len() as u32, 1, regions);
         // Fixed RNG seed + tick ensure deterministic seasonal shifts across runs.
         let mut rng = Stream::from(TEST_SEED, STAGE, TEST_TICK);
-        let diff = update(&world, &mut rng).expect("climate update should succeed");
+        let run = update(&world, &mut rng).expect("climate update should succeed");
+        let diff = run.diff;
 
         assert_eq!(diff.biome.len(), belt_cases.len());
 
@@ -394,7 +418,7 @@ mod tests {
         ];
         let world = World::new(17, 3, 1, regions);
         let mut rng = Stream::from(world.seed, STAGE, 1);
-        let diff = update(&world, &mut rng).unwrap();
+        let diff = update(&world, &mut rng).unwrap().diff;
         let target = "region:1/biome";
         let lift_entry = diff
             .causes
@@ -483,10 +507,11 @@ mod tests {
         let mut rng_a = Stream::from(world.seed, STAGE, 4);
         let mut rng_b = Stream::from(world.seed, STAGE, 4);
 
-        let diff_a = update(&world, &mut rng_a).expect("first run succeeds");
-        let diff_b = update(&world, &mut rng_b).expect("second run succeeds");
+        let run_a = update(&world, &mut rng_a).expect("first run succeeds");
+        let run_b = update(&world, &mut rng_b).expect("second run succeeds");
 
-        assert_eq!(diff_a.causes, diff_b.causes);
+        assert_eq!(run_a.diff.causes, run_b.diff.causes);
+        assert_eq!(run_a.chronicle, run_b.chronicle);
     }
 
     #[test]
@@ -565,10 +590,12 @@ mod tests {
 
         let mut rng_with = Stream::from(world_with.seed, atmosphere::STAGE, 2);
         let mut rng_without = Stream::from(world_control.seed, atmosphere::STAGE, 2);
-        let diff_with =
-            atmosphere::update(&world_with, &mut rng_with).expect("atmosphere with baseline");
+        let diff_with = atmosphere::update(&world_with, &mut rng_with)
+            .expect("atmosphere with baseline")
+            .diff;
         let diff_without = atmosphere::update(&world_control, &mut rng_without)
-            .expect("atmosphere without baseline");
+            .expect("atmosphere without baseline")
+            .diff;
 
         let temp_with = diff_with
             .temperature

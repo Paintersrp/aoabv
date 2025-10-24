@@ -4,6 +4,7 @@ use crate::cause::{Code, Entry};
 use crate::diff::Diff;
 use crate::fixed::{ALBEDO_MAX, FRESHWATER_FLUX_MAX};
 use crate::rng::Stream;
+use crate::schedule::KernelRun;
 use crate::world::World;
 
 pub const STAGE: &str = "kernel:cryosphere";
@@ -16,8 +17,11 @@ const ICE_ACCUM_PER_MM: f64 = 6.5;
 const ICE_MASS_SATURATION_KT: f64 = 60_000.0;
 const ICE_MASS_MAX_KT: f64 = 200_000.0;
 
-pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
+pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
+    let mut chronicle = Vec::new();
+    let mut ice_updates = 0usize;
+    let mut freshwater_regions = 0usize;
 
     for (index, region) in world.regions.iter().enumerate() {
         debug_assert_eq!(
@@ -52,6 +56,7 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
 
         if next_ice_mass_i32 != region.ice_mass_kilotons as i32 {
             diff.record_ice_mass(index, next_ice_mass_i32);
+            ice_updates += 1;
         }
 
         let coverage = if next_ice_mass <= 0.0 {
@@ -95,10 +100,24 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
                 Code::FreshwaterPulse,
                 Some(format!("tenths_mm={}", freshwater_clamped)),
             ));
+            freshwater_regions += 1;
         }
     }
 
-    Ok(diff)
+    if ice_updates > 0 || freshwater_regions > 0 {
+        chronicle.push(format!(
+            "Polar ice adjusted across {} regions; freshwater pulses in {} basins.",
+            ice_updates, freshwater_regions
+        ));
+    } else {
+        chronicle.push(CHRONICLE_LINE.to_string());
+    }
+
+    Ok(KernelRun {
+        diff,
+        chronicle,
+        highlights: Vec::new(),
+    })
 }
 
 #[cfg(test)]
@@ -146,7 +165,8 @@ mod tests {
         let world = World::new(9, 2, 1, regions);
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
-        let diff = update(&world, &mut rng).expect("cryosphere update succeeds");
+        let run = update(&world, &mut rng).expect("cryosphere update succeeds");
+        let diff = run.diff;
 
         assert!(
             !diff.albedo.is_empty(),
@@ -174,6 +194,7 @@ mod tests {
                 .any(|entry| entry.code == Code::FreshwaterPulse),
             "freshwater cause expected"
         );
+        assert!(!run.chronicle.is_empty());
     }
 
     #[test]
@@ -198,20 +219,24 @@ mod tests {
         let mut rng_a = Stream::from(world.seed, STAGE, 3);
         let mut rng_b = Stream::from(world.seed, STAGE, 3);
 
-        let diff_a = update(&world, &mut rng_a).expect("first run succeeds");
-        let diff_b = update(&world, &mut rng_b).expect("second run succeeds");
+        let run_a = update(&world, &mut rng_a).expect("first run succeeds");
+        let run_b = update(&world, &mut rng_b).expect("second run succeeds");
 
-        assert_eq!(diff_a.albedo, diff_b.albedo, "albedo deterministic");
-        assert_eq!(diff_a.ice_mass, diff_b.ice_mass, "ice mass deterministic");
+        assert_eq!(run_a.diff.albedo, run_b.diff.albedo, "albedo deterministic");
+        assert_eq!(
+            run_a.diff.ice_mass, run_b.diff.ice_mass,
+            "ice mass deterministic"
+        );
+        assert_eq!(run_a.chronicle, run_b.chronicle);
 
-        for scalar in diff_a.albedo {
+        for scalar in run_a.diff.albedo {
             assert!(
                 (ALBEDO_FLOOR..=ALBEDO_MAX_I32).contains(&scalar.value),
                 "albedo {} out of range",
                 scalar.value
             );
         }
-        for scalar in diff_a.ice_mass {
+        for scalar in run_a.diff.ice_mass {
             assert!(scalar.value >= 0, "ice mass must remain non-negative");
         }
     }

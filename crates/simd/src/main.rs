@@ -13,7 +13,7 @@ use clap::Parser;
 use sim_core::cause::Entry;
 use sim_core::io::frame::make_frame;
 use sim_core::io::seed::{build_world, Humidity, Noise, Seed};
-use sim_core::{collect_highlights, tick_once};
+use sim_core::tick_once;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
@@ -125,8 +125,7 @@ async fn main() -> Result<()> {
                 let seed = world.seed;
 
                 match tick_once(&mut world, seed, next_tick) {
-                    Ok((diff, chronicle)) => {
-                        let highlights = collect_highlights(&world, &diff);
+                    Ok((diff, chronicle, highlights)) => {
                         let causes = diff.causes.clone();
                         let width = world.width;
                         let height = world.height;

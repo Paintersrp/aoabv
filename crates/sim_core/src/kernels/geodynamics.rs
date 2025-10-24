@@ -3,6 +3,7 @@ use anyhow::{ensure, Result};
 use crate::cause::{Code, Entry};
 use crate::diff::Diff;
 use crate::rng::Stream;
+use crate::schedule::KernelRun;
 use crate::world::World;
 
 pub const STAGE: &str = "kernel:geodynamics";
@@ -13,7 +14,7 @@ const MAX_ELEVATION_M: i32 = 4_000; // TODO(agents): rationale — allow moderat
 
 const NEIGHBOR_OFFSETS: &[(i32, i32)] = &[(-1, 0), (1, 0), (0, -1), (0, 1)];
 
-pub fn update(world: &World, rng: &mut Stream) -> Result<(Diff, Vec<String>)> {
+pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
     let mut chronicle = Vec::new();
 
@@ -85,7 +86,11 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<(Diff, Vec<String>)> {
         ));
     }
 
-    Ok((diff, chronicle))
+    Ok(KernelRun {
+        diff,
+        chronicle,
+        highlights: Vec::new(),
+    })
 }
 
 fn clamp_elevation(value: i32) -> i32 {
@@ -122,7 +127,9 @@ mod tests {
     fn update_is_often_noop() {
         let world = test_world();
         let mut rng = Stream::from(world.seed, STAGE, 1);
-        let (diff, chronicle) = update(&world, &mut rng).expect("geodynamics update succeeds");
+        let run = update(&world, &mut rng).expect("geodynamics update succeeds");
+        let diff = run.diff;
+        let chronicle = run.chronicle;
         // Most ticks should be empty; ensure deterministic empty case allowed.
         assert!(diff.elevation.len() <= 5);
         assert!(chronicle.len() <= diff.elevation.len());
@@ -134,13 +141,15 @@ mod tests {
         let mut triggered = None;
         for tick in 1..=5_000 {
             let mut rng = Stream::from(world.seed, STAGE, tick);
-            let (diff, chronicle) = update(&world, &mut rng).expect("geodynamics update succeeds");
-            if !diff.elevation.is_empty() {
-                triggered = Some((tick, diff, chronicle));
+            let run = update(&world, &mut rng).expect("geodynamics update succeeds");
+            if !run.diff.elevation.is_empty() {
+                triggered = Some((tick, run));
                 break;
             }
         }
-        let (tick, diff, chronicle) = triggered.expect("event triggers within sample window");
+        let (tick, run) = triggered.expect("event triggers within sample window");
+        let diff = run.diff;
+        let chronicle = run.chronicle;
         assert!(tick <= 5_000);
         assert!(!diff.elevation.is_empty());
         assert!(!chronicle.is_empty());
