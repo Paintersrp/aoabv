@@ -1,201 +1,20 @@
 use crate::cause::{Code, Entry};
-use crate::diff::{DiagEnergy, Diff};
-use crate::fixed::{resource_ratio, WATER_MAX};
+use crate::diff::Diff;
 use crate::rng::Stream;
 use crate::schedule::KernelRun;
-use crate::world::{Region, World};
+use crate::world::World;
 use anyhow::{ensure, Result};
+
+mod albedo;
+mod classification;
+mod diagnostics;
 
 pub const STAGE: &str = "kernel:climate";
 pub const ALBEDO_RECONCILE_STAGE: &str = "kernel:climate/albedo_reconcile";
 pub const CORE_STAGE: &str = "kernel:climate/core";
-const BASELINE_LIMIT_TENTHS: i32 = 120;
-
-enum LatitudeBelt {
-    Equatorial,
-    Subtropical,
-    Temperate,
-    Subpolar,
-    Polar,
-}
-
-impl LatitudeBelt {
-    fn from_latitude(latitude: f64) -> Self {
-        let lat = latitude.abs();
-        if lat < 15.0 {
-            Self::Equatorial
-        } else if lat < 30.0 {
-            Self::Subtropical
-        } else if lat < 45.0 {
-            Self::Temperate
-        } else if lat < 60.0 {
-            Self::Subpolar
-        } else {
-            Self::Polar
-        }
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Equatorial => "equatorial",
-            Self::Subtropical => "subtropical",
-            Self::Temperate => "temperate",
-            Self::Subpolar => "subpolar",
-            Self::Polar => "polar",
-        }
-    }
-}
-
-fn classify_biome(belt: &LatitudeBelt, dryness: f64) -> u8 {
-    let dryness = dryness.clamp(0.0, 1.0);
-    match belt {
-        LatitudeBelt::Equatorial => {
-            if dryness < 0.35 {
-                5 // tropical rainforest
-            } else if dryness < 0.65 {
-                3 // dry steppe
-            } else {
-                4 // desert
-            }
-        }
-        LatitudeBelt::Subtropical => {
-            if dryness < 0.3 {
-                5
-            } else if dryness < 0.6 {
-                2 // savannah / temperate mix
-            } else {
-                4
-            }
-        }
-        LatitudeBelt::Temperate => {
-            if dryness < 0.25 {
-                2 // temperate forest
-            } else if dryness < 0.6 {
-                1 // boreal/grassland mix
-            } else {
-                3
-            }
-        }
-        LatitudeBelt::Subpolar => {
-            if dryness < 0.4 {
-                1
-            } else {
-                0 // polar tundra
-            }
-        }
-        LatitudeBelt::Polar => 0,
-    }
-}
-
-fn biome_label(biome: u8) -> &'static str {
-    match biome {
-        5 => "rainforest",
-        4 => "desert",
-        3 => "steppe",
-        2 => "temperate",
-        1 => "boreal",
-        _ => "polar",
-    }
-}
-
-fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
-    let moisture = resource_ratio(region.water, WATER_MAX);
-    let elevation = (f64::from(region.elevation_m) / 3_000.0).clamp(0.0, 1.0);
-    let baseline = 1.0 - moisture;
-    (baseline * 0.6 + elevation * 0.3 + seasonal_shift * 0.1).clamp(0.0, 1.0)
-}
-
-fn orographic_lift_indicator(world: &World, region: &Region) -> f64 {
-    let width = world.width as i32;
-    let height = world.height as i32;
-    let x = region.x as i32;
-    let y = region.y as i32;
-    let mut sum = 0_i64;
-    let mut count = 0_i32;
-    const OFFSETS: &[(i32, i32)] = &[(-1, 0), (1, 0), (0, -1), (0, 1)];
-    for (dx, dy) in OFFSETS {
-        let nx = x + dx;
-        let ny = y + dy;
-        if nx < 0 || nx >= width || ny < 0 || ny >= height {
-            continue;
-        }
-        let neighbor_index = (ny * width + nx) as usize;
-        if let Some(neighbor) = world.regions.get(neighbor_index) {
-            sum += i64::from(neighbor.elevation_m);
-            count += 1;
-        }
-    }
-    if count == 0 {
-        return 0.0;
-    }
-    let neighbor_mean = sum as f64 / f64::from(count);
-    ((f64::from(region.elevation_m) - neighbor_mean) / 1_000.0).max(0.0)
-}
 
 pub fn albedo_reconcile(world: &mut World) -> Result<Diff> {
-    let mut diff = Diff::default();
-    let region_count = world.regions.len();
-    if region_count == 0 {
-        return Ok(diff);
-    }
-
-    world.climate.ensure_region_capacity(region_count);
-
-    let mut total_anomaly = 0i64;
-    let mut total_adjust = 0i64;
-    let mut adjusted_regions = 0usize;
-
-    for (index, region) in world.regions.iter().enumerate() {
-        let current_albedo = i32::from(region.albedo_milli);
-        let slot = world
-            .climate
-            .last_albedo_milli
-            .get_mut(index)
-            .expect("climate state sized to regions");
-        let previous_albedo = if *slot == 0 { current_albedo } else { *slot };
-        *slot = current_albedo;
-        let anomaly = current_albedo - previous_albedo;
-        if anomaly == 0 {
-            continue;
-        }
-
-        adjusted_regions += 1;
-        total_anomaly += i64::from(anomaly);
-
-        let raw_adjust = (-anomaly as f64 / 15.0).round() as i32;
-        let bounded_adjust = raw_adjust.clamp(-BASELINE_LIMIT_TENTHS, BASELINE_LIMIT_TENTHS);
-        let slot = world
-            .climate
-            .temperature_baseline_tenths
-            .get_mut(index)
-            .expect("climate state sized");
-        let previous = i32::from(*slot);
-        let updated =
-            (previous + bounded_adjust).clamp(-BASELINE_LIMIT_TENTHS, BASELINE_LIMIT_TENTHS);
-        *slot = updated as i16;
-        total_adjust += i64::from(updated - previous);
-    }
-
-    if adjusted_regions > 0 {
-        let mean_anomaly = (total_anomaly as f64 / adjusted_regions as f64).round() as i32;
-        let mean_adjust = (total_adjust as f64 / adjusted_regions as f64).round() as i32;
-        diff.record_diag_energy(DiagEnergy {
-            albedo_anomaly_milli: mean_anomaly,
-            temp_adjust_tenths: mean_adjust,
-        });
-        diff.record_cause(Entry::new(
-            "climate:albedo_reconcile",
-            Code::AlbedoFeedback,
-            Some(format!("mean_milli={}", mean_anomaly)),
-        ));
-        diff.record_cause(Entry::new(
-            "climate:albedo_reconcile",
-            Code::EnergyBalanceAdjustment,
-            Some(format!("mean_tenths={}", mean_adjust)),
-        ));
-    }
-
-    Ok(diff)
+    albedo::reconcile(world)
 }
 pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let mut diff = Diff::default();
@@ -208,20 +27,23 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
             region.id,
             index
         );
-        let belt = LatitudeBelt::from_latitude(region.latitude_deg);
+
+        let belt = classification::LatitudeBelt::from_latitude(region.latitude_deg);
         let mut region_rng = rng.derive(region.index() as u64);
         let seasonal_shift = region_rng.next_signed_unit();
-        let dryness = dryness_score(region, seasonal_shift);
-        let biome = classify_biome(&belt, dryness);
-        let orographic_lift = orographic_lift_indicator(world, region);
+        let dryness = classification::dryness_score(region, seasonal_shift);
+        let biome = classification::classify_biome(&belt, dryness);
+        let orographic_lift = diagnostics::orographic_lift_indicator(world, region);
+
         if biome != region.biome {
             diff.record_biome(region.index(), biome);
             chronicle.push(format!(
                 "Region {} shifted toward a {} biome.",
                 region.id,
-                biome_label(biome)
+                classification::biome_label(biome)
             ));
         }
+
         diff.record_cause(Entry::new(
             format!("region:{}/biome", region.id),
             Code::LatitudeBelt,
@@ -252,6 +74,8 @@ mod tests {
     use crate::kernels::atmosphere;
     use crate::rng::Stream;
     use crate::world::{Hazards, Region, World};
+
+    use super::classification::LatitudeBelt;
 
     #[test]
     fn biome_classification_varies_by_latitude() {
