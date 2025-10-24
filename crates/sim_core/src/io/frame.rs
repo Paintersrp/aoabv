@@ -47,6 +47,8 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub precip: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub humidity: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub albedo: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub freshwater_flux: BTreeMap<String, i32>,
@@ -64,6 +66,7 @@ impl FrameDiff {
             && self.elevation.is_empty()
             && self.temp.is_empty()
             && self.precip.is_empty()
+            && self.humidity.is_empty()
             && self.albedo.is_empty()
             && self.freshwater_flux.is_empty()
             && self.soil.is_empty()
@@ -128,6 +131,11 @@ pub fn make_frame(
     for value in diff.precipitation {
         frame_diff
             .precip
+            .insert(World::region_key(value.region as usize), value.value);
+    }
+    for value in diff.humidity {
+        frame_diff
+            .humidity
             .insert(World::region_key(value.region as usize), value.value);
     }
     for value in diff.albedo {

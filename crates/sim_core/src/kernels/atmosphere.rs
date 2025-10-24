@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::cause::{Code, Entry};
 use crate::diff::Diff;
 use crate::fixed::{resource_ratio, WATER_MAX};
-use crate::rng::Stream;
+use crate::rng::{stream_label, Stream};
 use crate::world::World;
 
 pub const STAGE: &str = "kernel:atmosphere";
@@ -18,6 +18,11 @@ const MONSOON_STRENGTH_THRESHOLD: f64 = 0.25;
 const LAPSE_RATE_C_PER_KM: f64 = 6.5;
 const HUMIDITY_TEMP_BONUS: f64 = 10.0;
 const OROGRAPHIC_LIFT_THRESHOLD_KM: f64 = 0.25;
+const HUMIDITY_TENTHS_MAX: i32 = 1_000;
+const HUMIDITY_NOISE_FRACTION: f64 = 0.03;
+const PRECIP_MULTIPLIER_MIN: f64 = 0.2;
+const PRECIP_MULTIPLIER_MAX: f64 = 3.0;
+const RAIN_SHADOW_MAX: f64 = 0.75;
 
 fn insolation_factor(latitude_deg: f64) -> f64 {
     let closeness = (90.0 - latitude_deg.abs()).max(0.0) / 90.0;
@@ -57,9 +62,59 @@ fn compute_precip_mm(
     precip.round() as i32
 }
 
+fn prevailing_wind(latitude_deg: f64) -> (i32, i32) {
+    let abs_lat = latitude_deg.abs();
+    if abs_lat < 30.0 {
+        // Trade winds (east to west).
+        (-1, 0)
+    } else if abs_lat < 60.0 {
+        // Mid-latitude westerlies (west to east).
+        (1, 0)
+    } else {
+        // Polar easterlies (east to west).
+        (-1, 0)
+    }
+}
+
+fn region_index_at(world: &World, x: i32, y: i32) -> Option<usize> {
+    if x < 0 || y < 0 {
+        return None;
+    }
+    let (width, height) = (world.width as i32, world.height as i32);
+    if x >= width || y >= height {
+        return None;
+    }
+    let idx = (y as usize) * (world.width as usize) + (x as usize);
+    if idx < world.regions.len() {
+        let region = &world.regions[idx];
+        if region.x as i32 == x && region.y as i32 == y {
+            return Some(idx);
+        }
+    }
+    world
+        .regions
+        .iter()
+        .enumerate()
+        .find(|(_, region)| region.x as i32 == x && region.y as i32 == y)
+        .map(|(index, _)| index)
+}
+
 pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
-    let _ = rng;
     let mut diff = Diff::default();
+    let total_regions = world.regions.len();
+    if total_regions == 0 {
+        return Ok(diff);
+    }
+
+    let moisture_stream = rng.derive(stream_label("CLIMATE.atmo_moisture"));
+    let orography_stream = rng.derive(stream_label("CLIMATE.atmo_orography"));
+    let commit_stream = rng.derive(stream_label("CLIMATE.atmo_precip_commit"));
+
+    let mut humidity: Vec<f64> = Vec::with_capacity(total_regions);
+    let mut precip_multipliers = vec![1.0f64; total_regions];
+    let mut lift_gradients = vec![0.0f64; total_regions];
+    let mut lift_multipliers = vec![1.0f64; total_regions];
+    let mut rain_shadow_factors = vec![0.0f64; total_regions];
 
     for (index, region) in world.regions.iter().enumerate() {
         debug_assert_eq!(
@@ -70,7 +125,60 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
             index
         );
 
-        let humidity_ratio = resource_ratio(region.water, WATER_MAX);
+        let mut region_rng = moisture_stream.derive(index as u64);
+        let base_ratio = resource_ratio(region.water, WATER_MAX);
+        let jitter = region_rng.next_signed_unit() * HUMIDITY_NOISE_FRACTION;
+        let ratio = (base_ratio + jitter).clamp(0.0, 1.0);
+        humidity.push(ratio);
+    }
+
+    for (index, region) in world.regions.iter().enumerate() {
+        let (wind_dx, wind_dy) = prevailing_wind(region.latitude_deg);
+        if wind_dx == 0 && wind_dy == 0 {
+            continue;
+        }
+
+        let mut effect_rng = orography_stream.derive(index as u64);
+        let lift_jitter = effect_rng.next_f64();
+        let shadow_jitter = effect_rng.next_f64();
+
+        let upwind_x = region.x as i32 - wind_dx;
+        let upwind_y = region.y as i32 - wind_dy;
+        if let Some(upwind_index) = region_index_at(world, upwind_x, upwind_y) {
+            let upwind = &world.regions[upwind_index];
+            let gradient_km = f64::from(region.elevation_m - upwind.elevation_m) / 1_000.0;
+            if gradient_km >= OROGRAPHIC_LIFT_THRESHOLD_KM {
+                let random_factor = 0.85 + lift_jitter * 0.3;
+                let lift = gradient_km * 0.25 * random_factor;
+                humidity[index] = (humidity[index] + lift).clamp(0.0, 1.0);
+                let multiplier = (1.0 + lift * 0.8).clamp(1.0, PRECIP_MULTIPLIER_MAX);
+                precip_multipliers[index] *= multiplier;
+                lift_gradients[index] = gradient_km;
+                lift_multipliers[index] = precip_multipliers[index];
+
+                let downwind_x = region.x as i32 + wind_dx;
+                let downwind_y = region.y as i32 + wind_dy;
+                if let Some(downwind_index) = region_index_at(world, downwind_x, downwind_y) {
+                    let dryness_base = gradient_km * (0.18 + shadow_jitter * 0.12);
+                    let dryness = dryness_base.clamp(0.0, RAIN_SHADOW_MAX);
+                    humidity[downwind_index] =
+                        (humidity[downwind_index] * (1.0 - dryness)).clamp(0.0, 1.0);
+                    let rain_multiplier = (1.0 - dryness * 0.65).clamp(PRECIP_MULTIPLIER_MIN, 1.0);
+                    precip_multipliers[downwind_index] *= rain_multiplier;
+                    rain_shadow_factors[downwind_index] =
+                        rain_shadow_factors[downwind_index].max(dryness);
+                }
+            }
+        }
+    }
+
+    for (index, region) in world.regions.iter().enumerate() {
+        let mut commit_rng = commit_stream.derive(index as u64);
+        let humidity_ratio = humidity[index].clamp(0.0, 1.0);
+        let humidity_tenths = (humidity_ratio * f64::from(HUMIDITY_TENTHS_MAX)).round() as i32;
+        let humidity_tenths = humidity_tenths.clamp(0, HUMIDITY_TENTHS_MAX);
+        diff.record_humidity(index, humidity_tenths);
+
         let hadley = hadley_strength(region.latitude_deg);
         let temperature_tenths =
             compute_temperature_tenths(region.latitude_deg, region.elevation_m, humidity_ratio)
@@ -79,13 +187,16 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
             diff.record_temperature(index, temperature_tenths);
         }
 
-        let precip_mm = compute_precip_mm(
+        let base_precip = compute_precip_mm(
             region.latitude_deg,
             region.elevation_m,
             humidity_ratio,
             hadley,
-        )
-        .clamp(PRECIP_MIN_MM, PRECIP_MAX_MM);
+        );
+        let jitter = (commit_rng.next_f64() - 0.5) * 0.04;
+        let scaled_precip =
+            (f64::from(base_precip) * precip_multipliers[index] * (1.0 + jitter)).round() as i32;
+        let precip_mm = scaled_precip.clamp(PRECIP_MIN_MM, PRECIP_MAX_MM);
         if u16::from(region.precipitation_mm) != precip_mm as u16 {
             diff.record_precipitation(index, precip_mm);
         }
@@ -98,12 +209,22 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
             ));
         }
 
-        let elevation_km = f64::from(region.elevation_m.max(0)) / 1_000.0;
-        if elevation_km >= OROGRAPHIC_LIFT_THRESHOLD_KM {
+        if lift_gradients[index] > 0.0 {
             diff.record_cause(Entry::new(
                 format!("region:{}/precip", region.id),
                 Code::OrographicLift,
-                Some(format!("lift_km={:.2}", elevation_km)),
+                Some(format!(
+                    "gradient_km={:.2};multiplier={:.2}",
+                    lift_gradients[index], lift_multipliers[index]
+                )),
+            ));
+        }
+
+        if rain_shadow_factors[index] > 0.0 {
+            diff.record_cause(Entry::new(
+                format!("region:{}/precip", region.id),
+                Code::RainShadow,
+                Some(format!("shadow_factor={:.2}", rain_shadow_factors[index])),
             ));
         }
 
@@ -123,7 +244,9 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::frame::make_frame;
     use crate::world::{Hazards, Region, World};
+    use proptest::prelude::*;
 
     #[test]
     fn atmosphere_records_energy_balance_and_causes() {
@@ -132,10 +255,10 @@ mod tests {
                 id: 0,
                 x: 0,
                 y: 0,
-                elevation_m: 2_000,
-                latitude_deg: 12.0,
+                elevation_m: 200,
+                latitude_deg: 10.0,
                 biome: 0,
-                water: 9_000,
+                water: 9_500,
                 soil: 8_000,
                 temperature_tenths_c: 0,
                 precipitation_mm: 0,
@@ -147,19 +270,34 @@ mod tests {
                 id: 1,
                 x: 1,
                 y: 0,
-                elevation_m: 100,
-                latitude_deg: 48.0,
+                elevation_m: 2_400,
+                latitude_deg: 10.0,
                 biome: 0,
-                water: 4_500,
-                soil: 4_500,
+                water: 9_000,
+                soil: 8_000,
                 temperature_tenths_c: 0,
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
                 hazards: Hazards::default(),
             },
+            Region {
+                id: 2,
+                x: 2,
+                y: 0,
+                elevation_m: 100,
+                latitude_deg: 10.0,
+                biome: 0,
+                water: 9_200,
+                soil: 8_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 380,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
         ];
-        let world = World::new(7, 2, 1, regions);
+        let world = World::new(7, 3, 1, regions);
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
         let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
@@ -169,6 +307,7 @@ mod tests {
             !diff.precipitation.is_empty(),
             "precipitation map populated"
         );
+        assert_eq!(diff.humidity.len(), world.regions.len());
         assert!(diff
             .causes
             .iter()
@@ -180,6 +319,157 @@ mod tests {
         assert!(diff
             .causes
             .iter()
+            .any(|entry| entry.code == Code::RainShadow));
+        assert!(diff
+            .causes
+            .iter()
             .any(|entry| entry.code == Code::MonsoonOnset));
+    }
+
+    #[test]
+    fn atmosphere_update_is_deterministic() {
+        let regions = vec![
+            Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 300,
+                latitude_deg: 15.0,
+                biome: 0,
+                water: 6_500,
+                soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 1,
+                x: 1,
+                y: 0,
+                elevation_m: 1_800,
+                latitude_deg: 28.0,
+                biome: 0,
+                water: 8_000,
+                soil: 5_200,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 2,
+                x: 2,
+                y: 0,
+                elevation_m: 120,
+                latitude_deg: 35.0,
+                biome: 0,
+                water: 7_500,
+                soil: 5_400,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+        ];
+        let world = World::new(11, 3, 1, regions);
+
+        let mut rng_a = Stream::from(world.seed, STAGE, 4);
+        let mut rng_b = Stream::from(world.seed, STAGE, 4);
+
+        let diff_a = update(&world, &mut rng_a).expect("first pass succeeds");
+        let diff_b = update(&world, &mut rng_b).expect("second pass succeeds");
+
+        assert_eq!(diff_a.temperature, diff_b.temperature);
+        assert_eq!(diff_a.precipitation, diff_b.precipitation);
+        assert_eq!(diff_a.humidity, diff_b.humidity);
+        assert_eq!(diff_a.causes, diff_b.causes);
+    }
+
+    proptest! {
+        #[test]
+        fn humidity_diff_within_bounds(waters in prop::collection::vec(0u16..=WATER_MAX, 1..5)) {
+            let regions: Vec<Region> = waters.iter().enumerate().map(|(i, water)| Region {
+                id: i as u32,
+                x: i as u32,
+                y: 0,
+                elevation_m: 200 + (i as i32 * 150),
+                latitude_deg: 5.0 + (i as f64 * 4.0),
+                biome: 0,
+                water: *water,
+                soil: 5_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 350,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            }).collect();
+
+            let width = regions.len() as u32;
+            let world = World::new(29, width.max(1), 1, regions);
+            let mut rng = Stream::from(world.seed, STAGE, 2);
+            let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
+
+            for value in diff.humidity {
+                prop_assert!(value.value >= 0);
+                prop_assert!(value.value <= HUMIDITY_TENTHS_MAX);
+            }
+        }
+    }
+
+    #[test]
+    fn humidity_diff_region_keys_are_prefixed() {
+        let regions = vec![
+            Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 100,
+                latitude_deg: 8.0,
+                biome: 0,
+                water: 8_500,
+                soil: 6_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 1,
+                x: 1,
+                y: 0,
+                elevation_m: 1_400,
+                latitude_deg: 8.0,
+                biome: 0,
+                water: 8_800,
+                soil: 6_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+        ];
+        let world = World::new(47, 2, 1, regions);
+        let mut rng = Stream::from(world.seed, STAGE, 3);
+        let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
+        let frame = make_frame(
+            world.tick,
+            diff,
+            Vec::new(),
+            Vec::new(),
+            false,
+            world.width,
+            world.height,
+        );
+
+        assert!(!frame.diff.humidity.is_empty(), "humidity diff populated");
+        for key in frame.diff.humidity.keys() {
+            assert!(key.starts_with("r:"), "key {} missing region prefix", key);
+        }
     }
 }

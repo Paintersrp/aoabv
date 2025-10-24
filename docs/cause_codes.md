@@ -3,7 +3,8 @@
 | Code | Stage | Description |
 | ---- | ----- | ----------- |
 | `latitude_belt` | climate | Region biome assignment derived from its latitude band. Note explains the band label. |
-| `orographic_lift` | climate | Elevated region relative to neighbours; note reports `lift_km=<value>` in kilometers. |
+| `orographic_lift` | climate | Prevailing-wind uplift over steep windward slopes; note reports `gradient_km` and `multiplier`. |
+| `rain_shadow` | climate | Downwind moisture depletion from an upwind barrier; note reports `shadow_factor`. |
 | `seasonality_variance` | climate | Seasonal variance applied to the region's moisture budget (range -1.0..1.0). |
 | `hadley_cell` | climate | Hadley circulation strength for low-latitude energy balance; note records `strength`. |
 | `monsoon_onset` | climate | Monsoon surge over humid low latitudes; note records `intensity`. |

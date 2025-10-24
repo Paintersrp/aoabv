@@ -16,6 +16,7 @@ pub struct Diff {
     pub elevation: Vec<ScalarValue>,
     pub temperature: Vec<ScalarValue>,
     pub precipitation: Vec<ScalarValue>,
+    pub humidity: Vec<ScalarValue>,
     pub albedo: Vec<ScalarValue>,
     pub freshwater_flux: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
@@ -59,6 +60,10 @@ impl Diff {
 
     pub fn record_precipitation(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.precipitation, region_index as u32, value);
+    }
+
+    pub fn record_humidity(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.humidity, region_index as u32, value);
     }
 
     pub fn record_albedo(&mut self, region_index: usize, value: i32) {
@@ -139,6 +144,9 @@ impl Diff {
         for scalar in &other.precipitation {
             Self::set_scalar_value(&mut self.precipitation, scalar.region, scalar.value);
         }
+        for scalar in &other.humidity {
+            Self::set_scalar_value(&mut self.humidity, scalar.region, scalar.value);
+        }
         for scalar in &other.albedo {
             Self::set_scalar_value(&mut self.albedo, scalar.region, scalar.value);
         }
@@ -166,6 +174,7 @@ impl Diff {
             && self.elevation.is_empty()
             && self.temperature.is_empty()
             && self.precipitation.is_empty()
+            && self.humidity.is_empty()
             && self.albedo.is_empty()
             && self.freshwater_flux.is_empty()
             && self.hazards.is_empty()
@@ -258,6 +267,9 @@ impl Serialize for Diff {
         if !self.precipitation.is_empty() {
             field_count += 1;
         }
+        if !self.humidity.is_empty() {
+            field_count += 1;
+        }
         if !self.albedo.is_empty() {
             field_count += 1;
         }
@@ -291,6 +303,9 @@ impl Serialize for Diff {
         }
         if !self.precipitation.is_empty() {
             state.serialize_field("precip", &ScalarValues(&self.precipitation))?;
+        }
+        if !self.humidity.is_empty() {
+            state.serialize_field("humidity", &ScalarValues(&self.humidity))?;
         }
         if !self.albedo.is_empty() {
             state.serialize_field("albedo", &ScalarValues(&self.albedo))?;
