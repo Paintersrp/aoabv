@@ -68,7 +68,7 @@ pub fn tick_once(
         &mut aggregate_diff,
         &climate_stage_rng,
         atmosphere::STAGE,
-        |world, rng| atmosphere::update(&*world, rng),
+        |world, rng| atmosphere::update(world, rng),
     )?;
     if !atmosphere_run.chronicle.is_empty() {
         chronicle.push("Hadley belt drifted northward under seasonal tilt.".to_string());

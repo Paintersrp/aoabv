@@ -34,7 +34,7 @@ pub(crate) const SEASONAL_INSOLATION_AMPLITUDE: f64 = 0.18;
 const HADLEY_DRIFT_MAX_DEGREES: f64 = 5.0;
 const SEASONAL_SCALAR_EPSILON: f64 = 1e-9;
 
-pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
+pub fn update(world: &mut World, rng: &mut Stream) -> Result<KernelRun> {
     if world.regions.is_empty() {
         return Ok(KernelRun::new(Diff::default()));
     }
@@ -131,9 +131,9 @@ mod tests {
         for region in &mut world.regions {
             region.precipitation_mm = 1_200;
         }
-        let mut rng = Stream::from(world.seed, STAGE, 1);
+        let mut rng = Stream::from(world.seed, "CLIMATE::atmosphere_substep", world.tick);
 
-        let run = update(&world, &mut rng).expect("atmosphere update succeeds");
+        let run = update(&mut world, &mut rng).expect("atmosphere update succeeds");
         let diff = run.diff;
 
         assert!(!diff.temperature.is_empty(), "temperature map populated");
@@ -170,7 +170,10 @@ mod tests {
             .causes
             .iter()
             .any(|entry| entry.code == Code::HumidityTransport));
-        assert_eq!(run.chronicle.len(), 1);
+        assert_eq!(run.chronicle.len(), 2);
+        assert!(run.chronicle.contains(
+            &"Convective bursts spiked rainfall; heat lingered over plains.".to_string()
+        ));
     }
 
     #[test]
@@ -225,18 +228,21 @@ mod tests {
                 hazards: Hazards::default(),
             },
         ];
-        let mut world = World::new(11, 3, 1, regions);
-        world.tick = 7;
-        world.climate.last_insolation_tenths = vec![12_400, 12_550, 12_700];
-        for (i, region) in world.regions.iter_mut().enumerate() {
+        let mut world_template = World::new(11, 3, 1, regions);
+        world_template.tick = 7;
+        world_template.climate.last_insolation_tenths = vec![12_400, 12_550, 12_700];
+        for (i, region) in world_template.regions.iter_mut().enumerate() {
             region.precipitation_mm = 900 + (i as u16) * 75;
         }
 
-        let mut rng_a = Stream::from(world.seed, STAGE, 4);
-        let mut rng_b = Stream::from(world.seed, STAGE, 4);
+        let mut world_a = world_template.clone();
+        let mut world_b = world_template.clone();
 
-        let run_a = update(&world, &mut rng_a).expect("first pass succeeds");
-        let run_b = update(&world, &mut rng_b).expect("second pass succeeds");
+        let mut rng_a = Stream::from(world_a.seed, "CLIMATE::atmosphere_substep", world_a.tick);
+        let mut rng_b = Stream::from(world_b.seed, "CLIMATE::atmosphere_substep", world_b.tick);
+
+        let run_a = update(&mut world_a, &mut rng_a).expect("first pass succeeds");
+        let run_b = update(&mut world_b, &mut rng_b).expect("second pass succeeds");
 
         assert_eq!(run_a.diff.temperature, run_b.diff.temperature);
         assert_eq!(run_a.diff.precipitation, run_b.diff.precipitation);
@@ -307,13 +313,13 @@ mod tests {
         world_a.tick = 5;
         world_a.climate.last_insolation_tenths = vec![12_200, 12_260];
 
-        let world_b = world_a.clone();
+        let mut world_b = world_a.clone();
 
-        let mut rng_a = Stream::from(world_a.seed, STAGE, 3);
-        let mut rng_b = Stream::from(world_b.seed, STAGE, 3);
+        let mut rng_a = Stream::from(world_a.seed, "CLIMATE::atmosphere_substep", world_a.tick);
+        let mut rng_b = Stream::from(world_b.seed, "CLIMATE::atmosphere_substep", world_b.tick);
 
-        let run_a = update(&world_a, &mut rng_a).expect("first pass reproducible");
-        let run_b = update(&world_b, &mut rng_b).expect("second pass reproducible");
+        let run_a = update(&mut world_a, &mut rng_a).expect("first pass reproducible");
+        let run_b = update(&mut world_b, &mut rng_b).expect("second pass reproducible");
 
         assert_eq!(run_a.diff.temperature, run_b.diff.temperature);
         assert_eq!(run_a.diff.precipitation, run_b.diff.precipitation);
@@ -343,9 +349,9 @@ mod tests {
             }).collect();
 
             let width = regions.len() as u32;
-            let world = World::new(29, width.max(1), 1, regions);
-            let mut rng = Stream::from(world.seed, STAGE, 2);
-            let diff = update(&world, &mut rng)
+            let mut world = World::new(29, width.max(1), 1, regions);
+            let mut rng = Stream::from(world.seed, "CLIMATE::atmosphere_substep", world.tick);
+            let diff = update(&mut world, &mut rng)
                 .expect("atmosphere update succeeds")
                 .diff;
 
@@ -392,9 +398,9 @@ mod tests {
                 hazards: Hazards::default(),
             },
         ];
-        let world = World::new(47, 2, 1, regions);
-        let mut rng = Stream::from(world.seed, STAGE, 3);
-        let diff = update(&world, &mut rng)
+        let mut world = World::new(47, 2, 1, regions);
+        let mut rng = Stream::from(world.seed, "CLIMATE::atmosphere_substep", world.tick);
+        let diff = update(&mut world, &mut rng)
             .expect("atmosphere update succeeds")
             .diff;
         let frame = make_frame(
@@ -467,8 +473,8 @@ mod tests {
         ];
         let mut world = World::new(19, 3, 1, regions);
         world.tick = 5;
-        let mut rng = Stream::from(world.seed, STAGE, 5);
-        let diff = update(&world, &mut rng)
+        let mut rng = Stream::from(world.seed, "CLIMATE::atmosphere_substep", world.tick);
+        let diff = update(&mut world, &mut rng)
             .expect("atmosphere update succeeds")
             .diff;
 
@@ -486,6 +492,14 @@ mod tests {
                 "precipitation {} out of bounds",
                 value.value
             );
+        }
+
+        for value in &diff.precip_extreme {
+            assert!((0..=super::precipitation::PRECIP_EXTREME_CLAMP).contains(&value.value));
+        }
+
+        for value in &diff.heatwave_idx {
+            assert!((0..=super::precipitation::HEAT_EXTREME_CLAMP).contains(&value.value));
         }
     }
 }

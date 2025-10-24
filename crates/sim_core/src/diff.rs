@@ -18,10 +18,12 @@ pub struct Diff {
     pub temperature: Vec<ScalarValue>,
     pub temperature_baseline: Vec<ScalarValue>,
     pub precipitation: Vec<ScalarValue>,
+    pub precip_extreme: Vec<ScalarValue>,
     pub humidity: Vec<ScalarValue>,
     pub albedo: Vec<ScalarValue>,
     pub freshwater_flux: Vec<ScalarValue>,
     pub ice_mass: Vec<ScalarValue>,
+    pub heatwave_idx: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
     pub causes: Vec<Entry>,
     pub diagnostics: BTreeMap<String, i32>,
@@ -70,6 +72,13 @@ impl Diff {
         Self::set_scalar_value(&mut self.precipitation, region_index as u32, value);
     }
 
+    pub fn record_precip_extreme(&mut self, region_index: usize, value: i32) {
+        if value == 0 {
+            return;
+        }
+        Self::set_scalar_value(&mut self.precip_extreme, region_index as u32, value);
+    }
+
     pub fn record_humidity(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.humidity, region_index as u32, value);
     }
@@ -84,6 +93,13 @@ impl Diff {
 
     pub fn record_ice_mass(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.ice_mass, region_index as u32, value);
+    }
+
+    pub fn record_heatwave_idx(&mut self, region_index: usize, value: i32) {
+        if value == 0 {
+            return;
+        }
+        Self::set_scalar_value(&mut self.heatwave_idx, region_index as u32, value);
     }
 
     pub fn record_hazard(&mut self, region_index: usize, drought: u16, flood: u16) {
@@ -163,6 +179,9 @@ impl Diff {
         for scalar in &other.precipitation {
             Self::set_scalar_value(&mut self.precipitation, scalar.region, scalar.value);
         }
+        for scalar in &other.precip_extreme {
+            Self::set_scalar_value(&mut self.precip_extreme, scalar.region, scalar.value);
+        }
         for scalar in &other.humidity {
             Self::set_scalar_value(&mut self.humidity, scalar.region, scalar.value);
         }
@@ -174,6 +193,9 @@ impl Diff {
         }
         for scalar in &other.ice_mass {
             Self::set_scalar_value(&mut self.ice_mass, scalar.region, scalar.value);
+        }
+        for scalar in &other.heatwave_idx {
+            Self::set_scalar_value(&mut self.heatwave_idx, scalar.region, scalar.value);
         }
         for hazard in &other.hazards {
             self.record_hazard(hazard.region as usize, hazard.drought, hazard.flood);
@@ -200,10 +222,12 @@ impl Diff {
             && self.temperature.is_empty()
             && self.temperature_baseline.is_empty()
             && self.precipitation.is_empty()
+            && self.precip_extreme.is_empty()
             && self.humidity.is_empty()
             && self.albedo.is_empty()
             && self.freshwater_flux.is_empty()
             && self.ice_mass.is_empty()
+            && self.heatwave_idx.is_empty()
             && self.hazards.is_empty()
             && self.causes.is_empty()
             && self.diagnostics.is_empty()
@@ -295,6 +319,9 @@ impl Serialize for Diff {
         if !self.precipitation.is_empty() {
             field_count += 1;
         }
+        if !self.precip_extreme.is_empty() {
+            field_count += 1;
+        }
         if !self.humidity.is_empty() {
             field_count += 1;
         }
@@ -305,6 +332,9 @@ impl Serialize for Diff {
             field_count += 1;
         }
         if !self.ice_mass.is_empty() {
+            field_count += 1;
+        }
+        if !self.heatwave_idx.is_empty() {
             field_count += 1;
         }
         if !self.hazards.is_empty() {
@@ -338,6 +368,9 @@ impl Serialize for Diff {
         if !self.precipitation.is_empty() {
             state.serialize_field("precip", &ScalarValues(&self.precipitation))?;
         }
+        if !self.precip_extreme.is_empty() {
+            state.serialize_field("precip_extreme", &ScalarValues(&self.precip_extreme))?;
+        }
         if !self.humidity.is_empty() {
             state.serialize_field("humidity", &ScalarValues(&self.humidity))?;
         }
@@ -349,6 +382,9 @@ impl Serialize for Diff {
         }
         if !self.ice_mass.is_empty() {
             state.serialize_field("ice_mass", &ScalarValues(&self.ice_mass))?;
+        }
+        if !self.heatwave_idx.is_empty() {
+            state.serialize_field("heatwave_idx", &ScalarValues(&self.heatwave_idx))?;
         }
         if !self.hazards.is_empty() {
             state.serialize_field("hazards", &self.hazards)?;

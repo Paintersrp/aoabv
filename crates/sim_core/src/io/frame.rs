@@ -47,6 +47,8 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub precip: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub precip_extreme: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub humidity: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub albedo: BTreeMap<String, i32>,
@@ -54,6 +56,8 @@ pub struct FrameDiff {
     pub freshwater_flux: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub ice_mass: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub heatwave_idx: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub soil: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
@@ -68,10 +72,12 @@ impl FrameDiff {
             && self.elevation.is_empty()
             && self.temp.is_empty()
             && self.precip.is_empty()
+            && self.precip_extreme.is_empty()
             && self.humidity.is_empty()
             && self.albedo.is_empty()
             && self.freshwater_flux.is_empty()
             && self.ice_mass.is_empty()
+            && self.heatwave_idx.is_empty()
             && self.soil.is_empty()
             && self.water.is_empty()
     }
@@ -138,6 +144,11 @@ pub fn make_frame(
             .precip
             .insert(World::region_key(value.region as usize), value.value);
     }
+    for value in diff.precip_extreme {
+        frame_diff
+            .precip_extreme
+            .insert(World::region_key(value.region as usize), value.value);
+    }
     for value in diff.humidity {
         frame_diff
             .humidity
@@ -156,6 +167,11 @@ pub fn make_frame(
     for value in diff.ice_mass {
         frame_diff
             .ice_mass
+            .insert(World::region_key(value.region as usize), value.value);
+    }
+    for value in diff.heatwave_idx {
+        frame_diff
+            .heatwave_idx
             .insert(World::region_key(value.region as usize), value.value);
     }
     for delta in diff.soil {
@@ -251,8 +267,10 @@ mod tests {
         diff.record_elevation(2, 987);
         diff.record_temperature(3, 156);
         diff.record_precipitation(0, 2_345);
+        diff.record_precip_extreme(1, 640);
         diff.record_albedo(1, 875);
         diff.record_freshwater_flux(2, 1_234);
+        diff.record_heatwave_idx(0, 210);
 
         let frame = make_frame(5, diff, Vec::new(), Vec::new(), false, 8, 4);
         let json_line = frame.to_ndjson().expect("frame serializes");
@@ -296,6 +314,16 @@ mod tests {
             .expect("precip is object");
         assert_eq!(precip.get("r:0").and_then(|v| v.as_i64()), Some(2_345));
 
+        let precip_extreme = diff_map
+            .get("precip_extreme")
+            .expect("precip_extreme map present")
+            .as_object()
+            .expect("precip_extreme is object");
+        assert_eq!(
+            precip_extreme.get("r:1").and_then(|v| v.as_i64()),
+            Some(640)
+        );
+
         let albedo = diff_map
             .get("albedo")
             .expect("albedo map present")
@@ -309,6 +337,13 @@ mod tests {
             .as_object()
             .expect("freshwater is object");
         assert_eq!(freshwater.get("r:2").and_then(|v| v.as_i64()), Some(1_234));
+
+        let heatwave_idx = diff_map
+            .get("heatwave_idx")
+            .expect("heatwave_idx map present")
+            .as_object()
+            .expect("heatwave_idx is object");
+        assert_eq!(heatwave_idx.get("r:0").and_then(|v| v.as_i64()), Some(210));
     }
 
     #[test]

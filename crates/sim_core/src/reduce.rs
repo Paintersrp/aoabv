@@ -20,10 +20,12 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.temperature.sort_by_key(|value| value.region);
     diff.temperature_baseline.sort_by_key(|value| value.region);
     diff.precipitation.sort_by_key(|value| value.region);
+    diff.precip_extreme.sort_by_key(|value| value.region);
     diff.humidity.sort_by_key(|value| value.region);
     diff.albedo.sort_by_key(|value| value.region);
     diff.freshwater_flux.sort_by_key(|value| value.region);
     diff.ice_mass.sort_by_key(|value| value.region);
+    diff.heatwave_idx.sort_by_key(|value| value.region);
     diff.hazards.sort_by_key(|hazard| hazard.region);
 
     for change in diff.biome {
