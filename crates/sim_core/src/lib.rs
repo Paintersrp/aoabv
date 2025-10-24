@@ -12,7 +12,7 @@ use diff::Diff;
 use fixed::WATER_MAX;
 use io::frame::Highlight;
 use kernels::{
-    astronomy, atmosphere, climate,
+    astronomy, atmosphere, climate, cryosphere,
     ecology::{self, DROUGHT_ALERT_THRESHOLD, FLOOD_ALERT_THRESHOLD},
     geodynamics,
 };
@@ -59,6 +59,12 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     aggregate_diff.merge(&atmosphere_diff);
     apply(world, atmosphere_diff);
     chronicle.push("Hadley cells formed; monsoon rains swept low latitudes.".to_string());
+
+    let mut cryosphere_rng = climate_stage_rng.derive(stream_label(cryosphere::STAGE));
+    let cryosphere_diff = cryosphere::update(world, &mut cryosphere_rng)?;
+    aggregate_diff.merge(&cryosphere_diff);
+    apply(world, cryosphere_diff);
+    chronicle.push(cryosphere::CHRONICLE_LINE.to_string());
 
     // Climate kernel.
     let mut climate_rng = climate_stage_rng.derive(stream_label("kernel:climate/core"));

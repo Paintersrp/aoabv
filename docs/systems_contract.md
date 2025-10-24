@@ -16,6 +16,8 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
     "precip": {"r:42": 3200},
     "soil": {"r:42": -40},
     "tide_envelope": {"r:42": -35},
+    "albedo": {"r:42": 910},
+    "freshwater_flux": {"r:42": 240},
     "water": {"r:42": 120}
   },
   "highlights": [
@@ -35,6 +37,8 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
   * `elevation` — Absolute terrain height in metres stored as `i32`. Initial seeds clamp sampled terrain to 0..=3_000 m, but kernels may push values negative for bathymetry adjustments.
   * `temp` — Deterministic air temperature in tenths of °C (-500..=500) derived from energy balance each tick.
   * `precip` — Total precipitation per tick in whole millimetres (0..=5_000) after humidity/orographic adjustments.
+  * `albedo` — Snow/ice albedo in milli-units (0..=1_000). Values represent instantaneous surface reflectivity.
+  * `freshwater_flux` — Meltwater discharge in tenths of millimetres per tick (0..=2_000).
 * `highlights` — Inspector hints. Hazard insight is surfaced exclusively via `{type:"hazard_flag", info:{kind, level}}` entries.
 * `chronicle` — Ordered list of short factual sentences per tick.
 * `era_end` — `true` once the long-term arc for the seed finishes (unused in v0.0).
@@ -53,7 +57,7 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
 
 * `freq` influences the pseudo-noise frequency (currently informational only but preserved for forward compatibility).
 * Repository fixtures `seed_wet_equator.json` and `seed_shard_continents.json` follow this schema.
-* The realised world stores `tick`, `seed`, `width`, `height`, and a `regions` array containing deterministic coordinates and climate state (biome, water, soil, temperature, precipitation, hazards).
+* The realised world stores `tick`, `seed`, `width`, `height`, and a `regions` array containing deterministic coordinates and climate state (biome, water, soil, temperature, precipitation, albedo, freshwater flux, hazards).
 
 ## Cause log schema
 
