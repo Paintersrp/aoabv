@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum Code {
     LatitudeBelt,
     OrographicLift,
-    SeasonalityVariance,
+    SeasonalShift,
     HadleyCell,
     HadleyDrift,
     MonsoonOnset,
@@ -39,7 +39,7 @@ impl std::fmt::Display for Code {
         let label = match self {
             Code::LatitudeBelt => "latitude_belt",
             Code::OrographicLift => "orographic_lift",
-            Code::SeasonalityVariance => "seasonality_variance",
+            Code::SeasonalShift => "seasonal_shift",
             Code::HadleyCell => "hadley_cell",
             Code::HadleyDrift => "hadley_drift",
             Code::MonsoonOnset => "monsoon_onset",

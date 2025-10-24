@@ -2,6 +2,7 @@ use anyhow::{ensure, Result};
 
 use crate::cause::{Code, Entry};
 use crate::diff::Diff;
+use crate::kernels::atmosphere::{seasonality, SEASONAL_INSOLATION_AMPLITUDE};
 use crate::rng::Stream;
 use crate::schedule::KernelRun;
 use crate::world::World;
@@ -35,6 +36,11 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
     let solar_cycle_amplitude = 1.0 + (solar_cycle_position - 0.5) * 0.1;
     let lunar_phase = rng.next_f64();
     let lunar_wave = lunar_phase * 2.0 - 1.0;
+    let seasonal_scalar = seasonality::scalar_for_tick(world.tick + 1);
+    let seasonal_bias = (1.0 + SEASONAL_INSOLATION_AMPLITUDE * seasonal_scalar).clamp(
+        1.0 - SEASONAL_INSOLATION_AMPLITUDE,
+        1.0 + SEASONAL_INSOLATION_AMPLITUDE,
+    );
 
     diff.record_cause(Entry::new(
         "world:astronomy",
@@ -52,7 +58,8 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
         Some(format!("cycle_index={}", solar_cycle_index)),
     ));
 
-    let equatorial_insolation = SOLAR_CONSTANT_WM2 * solar_cycle_amplitude * (0.35 + 0.65);
+    let equatorial_insolation =
+        SOLAR_CONSTANT_WM2 * solar_cycle_amplitude * seasonal_bias * (0.35 + 0.65);
 
     for (index, region) in world.regions.iter().enumerate() {
         ensure!(
@@ -65,6 +72,7 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
         let lat_effect = lat_factor(region.latitude_deg);
         let insolation_wm2 = SOLAR_CONSTANT_WM2
             * solar_cycle_amplitude
+            * seasonal_bias
             * (0.35 + 0.65 * lat_effect * (obliquity_deg / OBLIQUITY_BASE_DEG));
         diff.record_insolation(index, to_tenths(insolation_wm2));
 

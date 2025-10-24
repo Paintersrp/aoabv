@@ -81,12 +81,12 @@ pub(super) fn commit(
         if seasonality::has_seasonal_variation(seasonal.scalar) {
             diff.record_cause(Entry::new(
                 format!("region:{}/temperature", region.id),
-                Code::SeasonalityVariance,
+                Code::SeasonalShift,
                 Some(format!("scalar={:.3}", seasonal.scalar)),
             ));
             diff.record_cause(Entry::new(
                 format!("region:{}/precip", region.id),
-                Code::SeasonalityVariance,
+                Code::SeasonalShift,
                 Some(format!("scalar={:.3}", seasonal.scalar)),
             ));
         }
