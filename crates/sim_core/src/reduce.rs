@@ -23,10 +23,12 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.precip_extreme.sort_by_key(|value| value.region);
     diff.humidity.sort_by_key(|value| value.region);
     diff.albedo.sort_by_key(|value| value.region);
+    diff.permafrost_active.sort_by_key(|value| value.region);
     diff.freshwater_flux.sort_by_key(|value| value.region);
     diff.melt_pulse.sort_by_key(|value| value.region);
     diff.ice_mass.sort_by_key(|value| value.region);
     diff.heatwave_idx.sort_by_key(|value| value.region);
+    diff.diag_climate.sort_by_key(|value| value.region);
     diff.hazards.sort_by_key(|hazard| hazard.region);
 
     for change in diff.biome {
@@ -117,6 +119,7 @@ mod tests {
     use super::*;
     use crate::diff::{BiomeChange, HazardEvent, ResourceDelta, ScalarValue};
     use crate::world::{Hazards, Region};
+    use proptest::prelude::*;
 
     fn test_world() -> World {
         let regions = vec![
@@ -429,5 +432,169 @@ mod tests {
         assert_eq!(region3.precipitation_mm, 4_500);
         assert_eq!(region3.hazards.drought, crate::fixed::WATER_MAX);
         assert_eq!(region3.hazards.flood, 200);
+    }
+
+    proptest! {
+        #[test]
+        fn apply_is_order_independent_for_scalar_vectors(values in proptest::collection::vec(-4_000i32..4_000, 4)) {
+            let regions = [3u32, 1, 2, 0];
+            let mut unsorted = Diff::default();
+            unsorted.insolation = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: *value })
+                .collect();
+            unsorted.tide_envelope = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: value - 25 })
+                .collect();
+            unsorted.elevation = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: value + 200 })
+                .collect();
+            unsorted.temperature = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: *value })
+                .collect();
+            unsorted.temperature_baseline = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: value / 2 })
+                .collect();
+            unsorted.precipitation = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: value.abs() })
+                .collect();
+            unsorted.precip_extreme = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| {
+                    let extreme = if *value == 0 { 1 } else { *value };
+                    ScalarValue { region: *region, value: extreme }
+                })
+                .collect();
+            unsorted.humidity = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: value + 50 })
+                .collect();
+            unsorted.albedo = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| {
+                    let albedo = (value.abs() % 900) + 100;
+                    ScalarValue { region: *region, value: albedo }
+                })
+                .collect();
+            unsorted.permafrost_active = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: value - 10 })
+                .collect();
+            unsorted.freshwater_flux = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: value.abs() })
+                .collect();
+            unsorted.melt_pulse = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| {
+                    let melt = if *value == 0 { 3 } else { value.abs() };
+                    ScalarValue { region: *region, value: melt }
+                })
+                .collect();
+            unsorted.ice_mass = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: (value.abs() + 50) })
+                .collect();
+            unsorted.heatwave_idx = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| {
+                    let anomaly = if *value == 0 { 2 } else { *value };
+                    ScalarValue { region: *region, value: anomaly }
+                })
+                .collect();
+            unsorted.diag_climate = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ScalarValue { region: *region, value: *value })
+                .collect();
+
+            unsorted.water = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ResourceDelta {
+                    region: *region,
+                    delta: if *value == 0 { 1 } else { *value },
+                })
+                .collect();
+            unsorted.soil = regions
+                .iter()
+                .zip(values.iter())
+                .map(|(region, value)| ResourceDelta {
+                    region: *region,
+                    delta: if *value == 0 { -1 } else { -*value },
+                })
+                .collect();
+
+            let mut sorted = unsorted.clone();
+            sorted.insolation.sort_by_key(|value| value.region);
+            sorted.tide_envelope.sort_by_key(|value| value.region);
+            sorted.elevation.sort_by_key(|value| value.region);
+            sorted.temperature.sort_by_key(|value| value.region);
+            sorted.temperature_baseline.sort_by_key(|value| value.region);
+            sorted.precipitation.sort_by_key(|value| value.region);
+            sorted.precip_extreme.sort_by_key(|value| value.region);
+            sorted.humidity.sort_by_key(|value| value.region);
+            sorted.albedo.sort_by_key(|value| value.region);
+            sorted.permafrost_active.sort_by_key(|value| value.region);
+            sorted.freshwater_flux.sort_by_key(|value| value.region);
+            sorted.melt_pulse.sort_by_key(|value| value.region);
+            sorted.ice_mass.sort_by_key(|value| value.region);
+            sorted.heatwave_idx.sort_by_key(|value| value.region);
+            sorted.diag_climate.sort_by_key(|value| value.region);
+            sorted.water.sort_by_key(|delta| delta.region);
+            sorted.soil.sort_by_key(|delta| delta.region);
+
+            let mut world_unsorted = test_world();
+            let mut world_sorted = test_world();
+
+            apply(&mut world_unsorted, unsorted);
+            apply(&mut world_sorted, sorted);
+
+            for (left, right) in world_unsorted
+                .regions
+                .iter()
+                .zip(world_sorted.regions.iter())
+            {
+                assert_eq!(left.biome, right.biome);
+                assert_eq!(left.water, right.water);
+                assert_eq!(left.soil, right.soil);
+                assert_eq!(left.temperature_tenths_c, right.temperature_tenths_c);
+                assert_eq!(left.precipitation_mm, right.precipitation_mm);
+                assert_eq!(left.albedo_milli, right.albedo_milli);
+                assert_eq!(
+                    left.freshwater_flux_tenths_mm,
+                    right.freshwater_flux_tenths_mm
+                );
+                assert_eq!(left.ice_mass_kilotons, right.ice_mass_kilotons);
+            }
+
+            assert_eq!(
+                world_unsorted.climate.temperature_baseline_tenths,
+                world_sorted.climate.temperature_baseline_tenths
+            );
+            assert_eq!(
+                world_unsorted.climate.last_insolation_tenths,
+                world_sorted.climate.last_insolation_tenths
+            );
+        }
     }
 }

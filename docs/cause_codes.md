@@ -12,7 +12,7 @@
 | `energy_balance_adjustment` | climate (coupler) | Mean temperature baseline offset (tenths °C) queued by the atmosphere-cryosphere coupler; note records `mean_tenths`. |
 | `monsoon_onset` | climate | Monsoon surge over humid low latitudes; note records `intensity`. |
 | `storm_track_shift` | climate | Rolling precipitation spikes flagged from the extreme window; note records `anomaly_mm` and `window`. |
-| `heat_extreme` | climate | Rolling heatwave index calculated from temperature maxima; note records `anomaly_tenths` and `window`. |
+| `heat_extreme` | climate | Rolling heatwave index calculated from temperature maxima; note records `index_tenths` and `window`. |
 | `orogeny_belt` | geodynamics | Uplift event raised local terrain; note reports the signed metre delta. |
 | `volcanic_aerosol_pulse` | geodynamics | Volcanic eruption injected aerosols; note records `region` and `optical_depth`. |
 | `subsidence_deltas` | geodynamics | Subsidence lowered local terrain; note reports the signed metre delta. |

@@ -26,6 +26,7 @@ pub struct Diff {
     pub melt_pulse: Vec<ScalarValue>,
     pub ice_mass: Vec<ScalarValue>,
     pub heatwave_idx: Vec<ScalarValue>,
+    pub diag_climate: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
     pub causes: Vec<Entry>,
     pub diagnostics: BTreeMap<String, i32>,
@@ -113,6 +114,10 @@ impl Diff {
             return;
         }
         Self::set_scalar_value(&mut self.heatwave_idx, region_index as u32, value);
+    }
+
+    pub fn record_diag_climate(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.diag_climate, region_index as u32, value);
     }
 
     pub fn record_hazard(&mut self, region_index: usize, drought: u16, flood: u16) {
@@ -216,6 +221,9 @@ impl Diff {
         for scalar in &other.heatwave_idx {
             Self::set_scalar_value(&mut self.heatwave_idx, scalar.region, scalar.value);
         }
+        for scalar in &other.diag_climate {
+            Self::set_scalar_value(&mut self.diag_climate, scalar.region, scalar.value);
+        }
         for hazard in &other.hazards {
             self.record_hazard(hazard.region as usize, hazard.drought, hazard.flood);
         }
@@ -249,6 +257,7 @@ impl Diff {
             && self.melt_pulse.is_empty()
             && self.ice_mass.is_empty()
             && self.heatwave_idx.is_empty()
+            && self.diag_climate.is_empty()
             && self.hazards.is_empty()
             && self.causes.is_empty()
             && self.diagnostics.is_empty()
@@ -364,6 +373,9 @@ impl Serialize for Diff {
         if !self.heatwave_idx.is_empty() {
             field_count += 1;
         }
+        if !self.diag_climate.is_empty() {
+            field_count += 1;
+        }
         if !self.hazards.is_empty() {
             field_count += 1;
         }
@@ -418,6 +430,9 @@ impl Serialize for Diff {
         }
         if !self.heatwave_idx.is_empty() {
             state.serialize_field("heatwave_idx", &ScalarValues(&self.heatwave_idx))?;
+        }
+        if !self.diag_climate.is_empty() {
+            state.serialize_field("diag_climate", &ScalarValues(&self.diag_climate))?;
         }
         if !self.hazards.is_empty() {
             state.serialize_field("hazards", &self.hazards)?;

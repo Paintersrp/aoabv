@@ -65,8 +65,10 @@ fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::Args;
+    use super::{tick_once, Args};
     use clap::{error::ErrorKind, Parser};
+    use sim_core::io::frame::make_frame;
+    use sim_core::io::seed::{build_world, Seed};
 
     #[test]
     fn requires_seed_file() {
@@ -92,5 +94,43 @@ mod tests {
         ])
         .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn paired_runs_are_deterministic_over_200_ticks() {
+        let seed_json = r#"{
+            "name": "determinism",
+            "width": 4,
+            "height": 2,
+            "elevation_noise": {"octaves": 1, "freq": 0.1, "amp": 1.0, "seed": 3},
+            "humidity_bias": {"equator": 0.2, "poles": -0.2}
+        }"#;
+        let seed: Seed = serde_json::from_str(seed_json).expect("seed parses");
+
+        let run_once = || {
+            let mut world = build_world(&seed, Some(1_234_567));
+            let mut lines = Vec::new();
+            for _ in 0..200 {
+                let next_tick = world.tick + 1;
+                let seed_value = world.seed;
+                let (diff, chronicle, highlights) =
+                    tick_once(&mut world, seed_value, next_tick).expect("tick succeeds");
+                let frame = make_frame(
+                    next_tick,
+                    diff,
+                    highlights,
+                    chronicle,
+                    false,
+                    world.width,
+                    world.height,
+                );
+                lines.push(frame.to_ndjson().expect("frame serializes"));
+            }
+            lines
+        };
+
+        let first = run_once();
+        let second = run_once();
+        assert_eq!(first, second);
     }
 }
