@@ -159,7 +159,7 @@ impl ClimateState {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClimateState, Region};
+    use super::{ClimateState, Region, EXTREME_WINDOW};
 
     #[test]
     fn sea_level_accumulator_saturates_and_tracks_delta() {
@@ -189,5 +189,74 @@ mod tests {
 
         climate.add_sea_level_equivalent_mm(i32::MAX);
         assert_eq!(climate.sea_level_equivalent_mm(), i32::MAX);
+    }
+
+    #[test]
+    fn extreme_windows_initialize_and_resize_with_zeros() {
+        let mut regions = Vec::new();
+        for id in 0..3 {
+            regions.push(Region {
+                id,
+                x: id,
+                y: 0,
+                elevation_m: 0,
+                latitude_deg: 0.0,
+                biome: 0,
+                water: 0,
+                soil: 0,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 0,
+                freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
+                hazards: crate::world::Hazards::default(),
+            });
+        }
+
+        let mut climate = ClimateState::from_regions(&regions);
+
+        for window in &climate.temperature_maxima {
+            assert_eq!(window.len(), EXTREME_WINDOW);
+            assert!(window.iter().all(|value| *value == 0));
+        }
+
+        for window in &climate.precipitation_peaks {
+            assert_eq!(window.len(), EXTREME_WINDOW);
+            assert!(window.iter().all(|value| *value == 0));
+        }
+
+        regions.push(Region {
+            id: 3,
+            x: 3,
+            y: 0,
+            elevation_m: 0,
+            latitude_deg: 0.0,
+            biome: 0,
+            water: 0,
+            soil: 0,
+            temperature_tenths_c: 0,
+            precipitation_mm: 0,
+            albedo_milli: 0,
+            freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 0,
+            hazards: crate::world::Hazards::default(),
+        });
+
+        climate.ensure_region_capacity(regions.len());
+
+        assert_eq!(climate.temperature_maxima.len(), regions.len());
+        assert_eq!(climate.precipitation_peaks.len(), regions.len());
+        assert!(climate
+            .temperature_maxima
+            .last()
+            .unwrap()
+            .iter()
+            .all(|v| *v == 0));
+        assert!(climate
+            .precipitation_peaks
+            .last()
+            .unwrap()
+            .iter()
+            .all(|v| *v == 0));
     }
 }
