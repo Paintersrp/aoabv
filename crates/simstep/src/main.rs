@@ -4,9 +4,11 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use serde_json::json;
 use sim_core::io::frame::make_frame;
 use sim_core::io::seed::{build_world, Seed};
 use sim_core::tick_once;
+use sim_core::world::World;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -33,6 +35,56 @@ struct Args {
     /// Output NDJSON file path.
     #[arg(long)]
     out: PathBuf,
+
+    /// Optional path to emit per-tick global metrics as NDJSON.
+    #[arg(long = "emit-metrics", value_name = "PATH")]
+    emit_metrics: Option<PathBuf>,
+}
+
+struct GlobalMeans {
+    temp_c: f64,
+    albedo: f64,
+    humidity_pct: f64,
+    precip_native: f64,
+}
+
+fn compute_global_means(
+    world: &World,
+    humidity_cache: &[i32],
+    region_order: &[usize],
+) -> GlobalMeans {
+    if region_order.is_empty() {
+        return GlobalMeans {
+            temp_c: 0.0,
+            albedo: 0.0,
+            humidity_pct: 0.0,
+            precip_native: 0.0,
+        };
+    }
+
+    let mut temp_sum: i128 = 0;
+    let mut albedo_sum: i128 = 0;
+    let mut humidity_sum: i128 = 0;
+    let mut precip_sum: i128 = 0;
+
+    for &index in region_order {
+        if let Some(region) = world.regions.get(index) {
+            temp_sum += i128::from(region.temperature_tenths_c);
+            albedo_sum += i128::from(region.albedo_milli);
+            precip_sum += i128::from(region.precipitation_mm);
+            let humidity_value = humidity_cache.get(index).copied().unwrap_or(0);
+            humidity_sum += i128::from(humidity_value);
+        }
+    }
+
+    let count = region_order.len() as f64;
+    // TODO(agents): Equal-weight means avoid grid geometry assumptions for v0.2.
+    GlobalMeans {
+        temp_c: temp_sum as f64 / (count * 10.0),
+        albedo: albedo_sum as f64 / (count * 1_000.0),
+        humidity_pct: humidity_sum as f64 / (count * 10.0),
+        precip_native: precip_sum as f64 / count,
+    }
 }
 
 fn main() -> Result<()> {
@@ -42,23 +94,63 @@ fn main() -> Result<()> {
         .with_context(|| format!("failed to read seed {:?}", args.seed_file))?;
     let mut world = build_world(&seed, args.seed.or(args.world_seed));
 
-    let file =
+    let frame_file =
         File::create(&args.out).with_context(|| format!("failed to create {:?}", args.out))?;
-    let mut writer = BufWriter::new(file);
+    let mut frame_writer = BufWriter::new(frame_file);
+
+    let mut metrics_writer = if let Some(path) = &args.emit_metrics {
+        let file = File::create(path)
+            .with_context(|| format!("failed to create metrics file at {:?}", path))?;
+        Some(BufWriter::new(file))
+    } else {
+        None
+    };
+
+    let mut humidity_cache = vec![0i32; world.regions.len()];
+    let mut region_order: Vec<usize> = (0..world.regions.len()).collect();
+    region_order.sort_by_key(|&idx| world.regions[idx].id);
 
     for _ in 0..args.ticks {
         let next_tick = world.tick + 1;
         let seed = world.seed;
         let (diff, chronicle, highlights) = tick_once(&mut world, seed, next_tick)?;
 
+        if let Some(writer) = metrics_writer.as_mut() {
+            for value in &diff.humidity {
+                let index = value.region as usize;
+                if let Some(slot) = humidity_cache.get_mut(index) {
+                    *slot = value.value;
+                }
+            }
+
+            let means = compute_global_means(&world, &humidity_cache, &region_order);
+            let diag_energy = diff.diagnostics.get("energy_balance").copied().unwrap_or(0);
+            let metrics_line = json!({
+                "t": next_tick,
+                "global": {
+                    "temp_c": means.temp_c,
+                    "albedo": means.albedo,
+                    "humidity_pct": means.humidity_pct,
+                    "precip_native": means.precip_native,
+                    "diag_energy_tenths": diag_energy as f64,
+                }
+            });
+            let serialized = serde_json::to_string(&metrics_line)?;
+            writer.write_all(serialized.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+
         let width = world.width;
         let height = world.height;
         let frame = make_frame(next_tick, diff, highlights, chronicle, false, width, height);
         let line = frame.to_ndjson()?;
-        writer.write_all(line.as_bytes())?;
+        frame_writer.write_all(line.as_bytes())?;
     }
 
-    writer.flush()?;
+    frame_writer.flush()?;
+    if let Some(writer) = metrics_writer.as_mut() {
+        writer.flush()?;
+    }
 
     Ok(())
 }

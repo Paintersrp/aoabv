@@ -1,0 +1,8 @@
+metric,min,max,notes
+global.temp_c_mean,12,16,Earth-like global mean near 14C
+global.albedo_mean,0.27,0.33,Planetary albedo ~0.30 +- 0.03
+global.humidity_pct_mean,50,90,Broad sanity band for near-surface relative humidity
+global.diag_energy_abs_mean_tenths,0,5,Mean absolute energy drift near zero (tenths)
+# Optional observables (reported but not enforced in v0.2)
+# global.precip_native_mean,0,1e9,Unit depends on ticks; not enforced in v0.2
+# distribution checks are computed but not enforced
