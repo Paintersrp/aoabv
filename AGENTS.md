@@ -191,6 +191,8 @@ If a requested change violates determinism, data contracts, or non-goals, **refu
 * 2021 edition; `rustfmt` + `clippy -D warnings` on CI.
 * Kernels ≤ 400 LOC; pure functions over `&World` → `Diff`.
 * No global mutable state; inject RNG substream per kernel call.
+* Use `crates/sim_core/src/schedule::run_kernel` to orchestrate stage execution so the driver stays presentation-free; each kernel's `update` must return a `KernelRun` with its own chronicle/highlights payload.
+* Split kernels into focused submodules once helpers push them near the 400 LOC limit (see `kernels/atmosphere/` and `kernels/climate/`) to keep SRP boundaries obvious.
 
 ### 5.3 Godot style
 
