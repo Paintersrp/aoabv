@@ -18,6 +18,7 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.elevation.sort_by_key(|value| value.region);
     diff.temperature.sort_by_key(|value| value.region);
     diff.precipitation.sort_by_key(|value| value.region);
+    diff.humidity.sort_by_key(|value| value.region);
     diff.albedo.sort_by_key(|value| value.region);
     diff.freshwater_flux.sort_by_key(|value| value.region);
     diff.hazards.sort_by_key(|hazard| hazard.region);
