@@ -23,6 +23,43 @@ const HUMIDITY_NOISE_FRACTION: f64 = 0.03;
 const PRECIP_MULTIPLIER_MIN: f64 = 0.2;
 const PRECIP_MULTIPLIER_MAX: f64 = 3.0;
 const RAIN_SHADOW_MAX: f64 = 0.75;
+const PI: f64 = 3.14159265358979323846264338327950288;
+const TAU: f64 = 6.28318530717958647692528676655900577;
+const SEASON_PERIOD_TICKS: f64 = 12.0;
+const SEASONAL_INSOLATION_AMPLITUDE: f64 = 0.18;
+const HADLEY_DRIFT_MAX_DEGREES: f64 = 5.0;
+const SEASONAL_SCALAR_EPSILON: f64 = 1e-9;
+
+fn wrap_angle(mut angle: f64) -> f64 {
+    angle %= TAU;
+    if angle > PI {
+        angle -= TAU;
+    } else if angle < -PI {
+        angle += TAU;
+    }
+    angle
+}
+
+fn sin_series(angle: f64) -> f64 {
+    let x = wrap_angle(angle);
+    let x2 = x * x;
+    let x3 = x * x2;
+    let x5 = x3 * x2;
+    let x7 = x5 * x2;
+    let x9 = x7 * x2;
+    let x11 = x9 * x2;
+    let x13 = x11 * x2;
+    x - x3 / 6.0 + x5 / 120.0 - x7 / 5_040.0 + x9 / 362_880.0 - x11 / 39_916_800.0
+        + x13 / 6_227_020_800.0
+}
+
+fn seasonal_scalar(tick: u64) -> f64 {
+    if SEASON_PERIOD_TICKS <= f64::EPSILON {
+        return 0.0;
+    }
+    let phase = (tick as f64 / SEASON_PERIOD_TICKS) * TAU;
+    sin_series(phase)
+}
 
 fn insolation_factor(latitude_deg: f64) -> f64 {
     let closeness = (90.0 - latitude_deg.abs()).max(0.0) / 90.0;
@@ -37,8 +74,13 @@ fn hadley_strength(latitude_deg: f64) -> f64 {
     }
 }
 
-fn compute_temperature_tenths(latitude_deg: f64, elevation_m: i32, humidity_ratio: f64) -> i32 {
-    let insolation = insolation_factor(latitude_deg);
+fn compute_temperature_tenths(
+    latitude_deg: f64,
+    elevation_m: i32,
+    humidity_ratio: f64,
+    insolation_bias: f64,
+) -> i32 {
+    let insolation = (insolation_factor(latitude_deg) * insolation_bias).clamp(0.0, 1.2);
     let base_temp_c = -25.0 + 60.0 * insolation;
     let lapse = (f64::from(elevation_m.max(0)) / 1_000.0) * LAPSE_RATE_C_PER_KM;
     let humidity_bonus = (humidity_ratio - 0.5) * HUMIDITY_TEMP_BONUS;
@@ -50,8 +92,9 @@ fn compute_precip_mm(
     elevation_m: i32,
     humidity_ratio: f64,
     hadley_strength: f64,
+    insolation_bias: f64,
 ) -> i32 {
-    let insolation = insolation_factor(latitude_deg);
+    let insolation = (insolation_factor(latitude_deg) * insolation_bias).clamp(0.0, 1.2);
     let elevation_km = f64::from(elevation_m.max(0)) / 1_000.0;
     let lift_bonus = (elevation_km * 260.0).min(700.0);
     let convective = 1_000.0 + 2_200.0 * humidity_ratio * insolation;
@@ -105,6 +148,13 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
     if total_regions == 0 {
         return Ok(diff);
     }
+
+    let seasonal = seasonal_scalar(world.tick);
+    let insolation_bias = (1.0 + SEASONAL_INSOLATION_AMPLITUDE * seasonal).clamp(
+        1.0 - SEASONAL_INSOLATION_AMPLITUDE,
+        1.0 + SEASONAL_INSOLATION_AMPLITUDE,
+    );
+    let hadley_lat_shift = HADLEY_DRIFT_MAX_DEGREES * seasonal;
 
     let moisture_stream = rng.derive(stream_label("CLIMATE.atmo_moisture"));
     let orography_stream = rng.derive(stream_label("CLIMATE.atmo_orography"));
@@ -179,19 +229,25 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
         let humidity_tenths = humidity_tenths.clamp(0, HUMIDITY_TENTHS_MAX);
         diff.record_humidity(index, humidity_tenths);
 
-        let hadley = hadley_strength(region.latitude_deg);
-        let temperature_tenths =
-            compute_temperature_tenths(region.latitude_deg, region.elevation_m, humidity_ratio)
-                .clamp(TEMP_MIN_TENTHS_C, TEMP_MAX_TENTHS_C);
+        let effective_latitude = (region.latitude_deg - hadley_lat_shift).clamp(-90.0, 90.0);
+        let hadley = hadley_strength(effective_latitude);
+        let temperature_tenths = compute_temperature_tenths(
+            effective_latitude,
+            region.elevation_m,
+            humidity_ratio,
+            insolation_bias,
+        )
+        .clamp(TEMP_MIN_TENTHS_C, TEMP_MAX_TENTHS_C);
         if i32::from(region.temperature_tenths_c) != temperature_tenths {
             diff.record_temperature(index, temperature_tenths);
         }
 
         let base_precip = compute_precip_mm(
-            region.latitude_deg,
+            effective_latitude,
             region.elevation_m,
             humidity_ratio,
             hadley,
+            insolation_bias,
         );
         let jitter = (commit_rng.next_f64() - 0.5) * 0.04;
         let scaled_precip =
@@ -199,6 +255,32 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
         let precip_mm = scaled_precip.clamp(PRECIP_MIN_MM, PRECIP_MAX_MM);
         if u16::from(region.precipitation_mm) != precip_mm as u16 {
             diff.record_precipitation(index, precip_mm);
+        }
+
+        if seasonal.abs() > SEASONAL_SCALAR_EPSILON {
+            diff.record_cause(Entry::new(
+                format!("region:{}/temperature", region.id),
+                Code::SeasonalityVariance,
+                Some(format!("scalar={:.3}", seasonal)),
+            ));
+            diff.record_cause(Entry::new(
+                format!("region:{}/precip", region.id),
+                Code::SeasonalityVariance,
+                Some(format!("scalar={:.3}", seasonal)),
+            ));
+        }
+
+        if hadley_lat_shift.abs() > SEASONAL_SCALAR_EPSILON {
+            diff.record_cause(Entry::new(
+                format!("region:{}/temperature", region.id),
+                Code::HadleyDrift,
+                Some(format!("shift_deg={:.2}", hadley_lat_shift)),
+            ));
+            diff.record_cause(Entry::new(
+                format!("region:{}/precip", region.id),
+                Code::HadleyDrift,
+                Some(format!("shift_deg={:.2}", hadley_lat_shift)),
+            ));
         }
 
         if hadley > 0.0 {
@@ -297,7 +379,8 @@ mod tests {
                 hazards: Hazards::default(),
             },
         ];
-        let world = World::new(7, 3, 1, regions);
+        let mut world = World::new(7, 3, 1, regions);
+        world.tick = 3;
         let mut rng = Stream::from(world.seed, STAGE, 1);
 
         let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
@@ -312,6 +395,14 @@ mod tests {
             .causes
             .iter()
             .any(|entry| entry.code == Code::HadleyCell));
+        assert!(diff
+            .causes
+            .iter()
+            .any(|entry| entry.code == Code::SeasonalityVariance));
+        assert!(diff
+            .causes
+            .iter()
+            .any(|entry| entry.code == Code::HadleyDrift));
         assert!(diff
             .causes
             .iter()
@@ -375,7 +466,8 @@ mod tests {
                 hazards: Hazards::default(),
             },
         ];
-        let world = World::new(11, 3, 1, regions);
+        let mut world = World::new(11, 3, 1, regions);
+        world.tick = 7;
 
         let mut rng_a = Stream::from(world.seed, STAGE, 4);
         let mut rng_b = Stream::from(world.seed, STAGE, 4);
@@ -387,6 +479,22 @@ mod tests {
         assert_eq!(diff_a.precipitation, diff_b.precipitation);
         assert_eq!(diff_a.humidity, diff_b.humidity);
         assert_eq!(diff_a.causes, diff_b.causes);
+    }
+
+    #[test]
+    fn seasonal_scalar_matches_expected_phases() {
+        let checkpoints = [(0, 0.0), (3, 1.0), (6, 0.0), (9, -1.0), (12, 0.0)];
+        for (tick, expected) in checkpoints {
+            let actual = seasonal_scalar(tick);
+            assert!(
+                (actual - expected).abs() < 2e-4,
+                "tick {} expected {:.3} got {:.6}",
+                tick,
+                expected,
+                actual
+            );
+        }
+        assert!((seasonal_scalar(0) - seasonal_scalar(12)).abs() < 1e-9);
     }
 
     proptest! {
@@ -470,6 +578,77 @@ mod tests {
         assert!(!frame.diff.humidity.is_empty(), "humidity diff populated");
         for key in frame.diff.humidity.keys() {
             assert!(key.starts_with("r:"), "key {} missing region prefix", key);
+        }
+    }
+
+    #[test]
+    fn temperature_and_precip_within_bounds() {
+        let regions = vec![
+            Region {
+                id: 0,
+                x: 0,
+                y: 0,
+                elevation_m: 50,
+                latitude_deg: -18.0,
+                biome: 0,
+                water: 9_800,
+                soil: 7_000,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 340,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 1,
+                x: 1,
+                y: 0,
+                elevation_m: 3_200,
+                latitude_deg: 32.0,
+                biome: 0,
+                water: 5_500,
+                soil: 6_200,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+            Region {
+                id: 2,
+                x: 2,
+                y: 0,
+                elevation_m: 400,
+                latitude_deg: 58.0,
+                biome: 0,
+                water: 6_700,
+                soil: 6_400,
+                temperature_tenths_c: 0,
+                precipitation_mm: 0,
+                albedo_milli: 360,
+                freshwater_flux_tenths_mm: 0,
+                hazards: Hazards::default(),
+            },
+        ];
+        let mut world = World::new(19, 3, 1, regions);
+        world.tick = 5;
+        let mut rng = Stream::from(world.seed, STAGE, 5);
+        let diff = update(&world, &mut rng).expect("atmosphere update succeeds");
+
+        for value in &diff.temperature {
+            assert!(
+                (TEMP_MIN_TENTHS_C..=TEMP_MAX_TENTHS_C).contains(&value.value),
+                "temperature {} out of bounds",
+                value.value
+            );
+        }
+
+        for value in &diff.precipitation {
+            assert!(
+                (PRECIP_MIN_MM..=PRECIP_MAX_MM).contains(&value.value),
+                "precipitation {} out of bounds",
+                value.value
+            );
         }
     }
 }

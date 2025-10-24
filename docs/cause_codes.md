@@ -7,6 +7,7 @@
 | `rain_shadow` | climate | Downwind moisture depletion from an upwind barrier; note reports `shadow_factor`. |
 | `seasonality_variance` | climate | Seasonal variance applied to the region's moisture budget (range -1.0..1.0). |
 | `hadley_cell` | climate | Hadley circulation strength for low-latitude energy balance; note records `strength`. |
+| `hadley_drift` | climate | Seasonal Hadley belt shift applied to effective latitude; note records `shift_deg`. |
 | `monsoon_onset` | climate | Monsoon surge over humid low latitudes; note records `intensity`. |
 | `orogeny_belt` | geodynamics | Uplift event raised local terrain; note reports the signed metre delta. |
 | `volcanic_aerosol_pulse` | geodynamics | Volcanic eruption injected aerosols; note records `region` and `optical_depth`. |
