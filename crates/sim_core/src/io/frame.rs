@@ -53,6 +53,8 @@ pub struct FrameDiff {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub freshwater_flux: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub ice_mass: BTreeMap<String, i32>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub soil: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub water: BTreeMap<String, i32>,
@@ -69,6 +71,7 @@ impl FrameDiff {
             && self.humidity.is_empty()
             && self.albedo.is_empty()
             && self.freshwater_flux.is_empty()
+            && self.ice_mass.is_empty()
             && self.soil.is_empty()
             && self.water.is_empty()
     }
@@ -148,6 +151,11 @@ pub fn make_frame(
             .freshwater_flux
             .insert(World::region_key(value.region as usize), value.value);
     }
+    for value in diff.ice_mass {
+        frame_diff
+            .ice_mass
+            .insert(World::region_key(value.region as usize), value.value);
+    }
     for delta in diff.soil {
         frame_diff
             .soil
@@ -197,9 +205,27 @@ mod tests {
         let diff_map = diff_value.as_object().expect("diff is object");
 
         for key in diff_map.keys() {
-            assert!(key == "biome" || key == "water" || key == "soil");
+            assert!(key == "biome" || key == "water" || key == "soil" || key == "ice_mass");
         }
         assert!(!diff_map.contains_key("hazards"));
+    }
+
+    #[test]
+    fn frame_diff_includes_ice_mass_map() {
+        let mut diff = Diff::default();
+        diff.record_ice_mass(0, 12_500);
+
+        let frame = make_frame(2, diff, Vec::new(), Vec::new(), false, 4, 4);
+        let json_line = frame.to_ndjson().expect("frame serializes");
+        let value: serde_json::Value =
+            serde_json::from_str(json_line.trim_end()).expect("valid json");
+        let diff_value = value.get("diff").expect("diff field present");
+        let ice_mass = diff_value
+            .get("ice_mass")
+            .expect("ice_mass field present")
+            .as_object()
+            .expect("ice_mass diff is object");
+        assert_eq!(ice_mass.get("r:0").and_then(|v| v.as_i64()), Some(12_500));
     }
 
     #[test]
