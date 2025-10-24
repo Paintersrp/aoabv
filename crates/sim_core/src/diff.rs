@@ -19,8 +19,10 @@ pub struct Diff {
     pub humidity: Vec<ScalarValue>,
     pub albedo: Vec<ScalarValue>,
     pub freshwater_flux: Vec<ScalarValue>,
+    pub ice_mass: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
     pub causes: Vec<Entry>,
+    pub diag_energy: Option<DiagEnergy>,
 }
 
 impl Diff {
@@ -74,6 +76,10 @@ impl Diff {
         Self::set_scalar_value(&mut self.freshwater_flux, region_index as u32, value);
     }
 
+    pub fn record_ice_mass(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.ice_mass, region_index as u32, value);
+    }
+
     pub fn record_hazard(&mut self, region_index: usize, drought: u16, flood: u16) {
         let region = region_index as u32;
         match self.hazards.binary_search_by_key(&region, |h| h.region) {
@@ -119,6 +125,10 @@ impl Diff {
         }
     }
 
+    pub fn record_diag_energy(&mut self, diag: DiagEnergy) {
+        self.diag_energy = Some(diag);
+    }
+
     pub fn merge(&mut self, other: &Diff) {
         for change in &other.biome {
             self.set_biome_value(change.region, change.biome);
@@ -153,11 +163,17 @@ impl Diff {
         for scalar in &other.freshwater_flux {
             Self::set_scalar_value(&mut self.freshwater_flux, scalar.region, scalar.value);
         }
+        for scalar in &other.ice_mass {
+            Self::set_scalar_value(&mut self.ice_mass, scalar.region, scalar.value);
+        }
         for hazard in &other.hazards {
             self.record_hazard(hazard.region as usize, hazard.drought, hazard.flood);
         }
         for cause in other.causes.iter().cloned() {
             self.record_cause(cause);
+        }
+        if let Some(diag) = &other.diag_energy {
+            self.diag_energy = Some(diag.clone());
         }
     }
 
@@ -177,8 +193,10 @@ impl Diff {
             && self.humidity.is_empty()
             && self.albedo.is_empty()
             && self.freshwater_flux.is_empty()
+            && self.ice_mass.is_empty()
             && self.hazards.is_empty()
             && self.causes.is_empty()
+            && self.diag_energy.is_none()
     }
 
     fn set_biome_value(&mut self, region: u32, biome: i32) {
@@ -231,6 +249,12 @@ pub struct ScalarValue {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiagEnergy {
+    pub albedo_anomaly_milli: i32,
+    pub temp_adjust_tenths: i32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HazardEvent {
     pub region: u32,
     pub drought: u16,
@@ -276,7 +300,13 @@ impl Serialize for Diff {
         if !self.freshwater_flux.is_empty() {
             field_count += 1;
         }
+        if !self.ice_mass.is_empty() {
+            field_count += 1;
+        }
         if !self.hazards.is_empty() {
+            field_count += 1;
+        }
+        if self.diag_energy.is_some() {
             field_count += 1;
         }
         let mut state = serializer.serialize_struct("Diff", field_count)?;
@@ -313,8 +343,14 @@ impl Serialize for Diff {
         if !self.freshwater_flux.is_empty() {
             state.serialize_field("freshwater_flux", &ScalarValues(&self.freshwater_flux))?;
         }
+        if !self.ice_mass.is_empty() {
+            state.serialize_field("ice_mass", &ScalarValues(&self.ice_mass))?;
+        }
         if !self.hazards.is_empty() {
             state.serialize_field("hazards", &self.hazards)?;
+        }
+        if let Some(diag) = &self.diag_energy {
+            state.serialize_field("diag_energy", diag)?;
         }
         state.end()
     }

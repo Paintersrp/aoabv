@@ -71,6 +71,7 @@ pub fn build_world(seed: &Seed, world_seed_override: Option<u64>) -> World {
                 ALBEDO_MAX,
             );
             let freshwater_flux = clamp_u16(0, 0, FRESHWATER_FLUX_MAX);
+            let initial_ice_mass = ((polar_factor * 5_000.0).round() as i32).max(0) as u32;
 
             regions.push(Region {
                 id,
@@ -85,6 +86,7 @@ pub fn build_world(seed: &Seed, world_seed_override: Option<u64>) -> World {
                 precipitation_mm: 0,
                 albedo_milli: albedo,
                 freshwater_flux_tenths_mm: freshwater_flux,
+                ice_mass_kilotons: initial_ice_mass,
                 hazards: Hazards::default(),
             });
             id += 1;

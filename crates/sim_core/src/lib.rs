@@ -66,6 +66,10 @@ pub fn tick_once(world: &mut World, seed: u64, tick: u64) -> Result<(Diff, Vec<S
     apply(world, cryosphere_diff);
     chronicle.push(cryosphere::CHRONICLE_LINE.to_string());
 
+    let albedo_reconcile_diff = climate::albedo_reconcile(world)?;
+    aggregate_diff.merge(&albedo_reconcile_diff);
+    apply(world, albedo_reconcile_diff);
+
     // Climate kernel.
     let mut climate_rng = climate_stage_rng.derive(stream_label("kernel:climate/core"));
     let climate_diff = climate::update(world, &mut climate_rng)?;

@@ -23,6 +23,7 @@ fn sample_world() -> World {
             precipitation_mm: 0,
             albedo_milli: 450,
             freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -38,6 +39,7 @@ fn sample_world() -> World {
             precipitation_mm: 0,
             albedo_milli: 420,
             freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -53,6 +55,7 @@ fn sample_world() -> World {
             precipitation_mm: 0,
             albedo_milli: 410,
             freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 0,
             hazards: Hazards::default(),
         },
         Region {
@@ -68,6 +71,7 @@ fn sample_world() -> World {
             precipitation_mm: 0,
             albedo_milli: 380,
             freshwater_flux_tenths_mm: 0,
+            ice_mass_kilotons: 0,
             hazards: Hazards::default(),
         },
     ];

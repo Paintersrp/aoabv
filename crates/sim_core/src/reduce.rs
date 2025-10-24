@@ -10,6 +10,7 @@ const TEMP_MAX_TENTHS_C: i16 = 500;
 const PRECIP_MAX_MM: u16 = 5_000;
 
 pub fn apply(world: &mut World, mut diff: Diff) {
+    world.climate.ensure_region_capacity(world.regions.len());
     diff.biome.sort_by_key(|change| change.region);
     diff.water.sort_by_key(|delta| delta.region);
     diff.soil.sort_by_key(|delta| delta.region);
@@ -21,6 +22,7 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.humidity.sort_by_key(|value| value.region);
     diff.albedo.sort_by_key(|value| value.region);
     diff.freshwater_flux.sort_by_key(|value| value.region);
+    diff.ice_mass.sort_by_key(|value| value.region);
     diff.hazards.sort_by_key(|hazard| hazard.region);
 
     for change in diff.biome {
@@ -72,6 +74,12 @@ pub fn apply(world: &mut World, mut diff: Diff) {
         }
     }
 
+    for value in diff.ice_mass {
+        if let Some(region) = world.regions.get_mut(value.region as usize) {
+            region.ice_mass_kilotons = value.value.max(0) as u32;
+        }
+    }
+
     for hazard in diff.hazards {
         if let Some(region) = world.regions.get_mut(hazard.region as usize) {
             region.hazards.drought = clamp_hazard_meter(hazard.drought);
@@ -101,6 +109,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 350,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -116,6 +125,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -131,6 +141,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 370,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -146,6 +157,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 380,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
         ];
