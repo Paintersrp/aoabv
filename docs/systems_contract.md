@@ -14,12 +14,15 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
     "insolation": {"r:42": 1380},
     "temp": {"r:42": 184},
     "precip": {"r:42": 3200},
+    "humidity": {"r:42": 540},
     "soil": {"r:42": -40},
     "tide_envelope": {"r:42": -35},
     "albedo": {"r:42": 910},
     "freshwater_flux": {"r:42": 240},
+    "ice_mass": {"r:42": 12500},
     "water": {"r:42": 120}
   },
+  "diag_energy": {"albedo_anomaly_milli": -45, "temp_adjust_tenths": -3},
   "highlights": [
     {"type": "hazard_flag", "region": 42, "info": {"kind": "drought", "level": 0.43}}
   ],
@@ -37,11 +40,18 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
   * `elevation` — Absolute terrain height in metres stored as `i32`. Initial seeds clamp sampled terrain to 0..=3_000 m, but kernels may push values negative for bathymetry adjustments.
   * `temp` — Deterministic air temperature in tenths of °C (-500..=500) derived from energy balance each tick.
   * `precip` — Total precipitation per tick in whole millimetres (0..=5_000) after humidity/orographic adjustments.
-  * `albedo` — Snow/ice albedo in milli-units (0..=1_000). Values represent instantaneous surface reflectivity.
+  * `albedo` — Snow/ice albedo in milli-units (100..=1_000). Values represent instantaneous surface reflectivity.
   * `freshwater_flux` — Meltwater discharge in tenths of millimetres per tick (0..=2_000).
+  * `humidity` — Instantaneous atmospheric humidity in tenths of a percent (0..=1_000).
+  * `ice_mass` — Regional cryosphere storage in kilotons (integer, 0..≈200_000).
 * `highlights` — Inspector hints. Hazard insight is surfaced exclusively via `{type:"hazard_flag", info:{kind, level}}` entries.
 * `chronicle` — Ordered list of short factual sentences per tick.
 * `era_end` — `true` once the long-term arc for the seed finishes (unused in v0.0).
+
+When present, `diag_energy` captures global climate bookkeeping for the current tick:
+
+* `albedo_anomaly_milli` — Mean albedo anomaly in milli-units across regions that triggered reconciliation.
+* `temp_adjust_tenths` — Mean temperature baseline adjustment (tenths of °C) scheduled for the next tick.
 
 ## Seed schema
 

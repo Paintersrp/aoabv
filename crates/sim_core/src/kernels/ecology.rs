@@ -179,6 +179,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 350,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: crate::world::Hazards::default(),
             }],
         );
@@ -213,6 +214,7 @@ mod tests {
                     precipitation_mm: 0,
                     albedo_milli: 350,
                     freshwater_flux_tenths_mm: 0,
+                    ice_mass_kilotons: 0,
                     hazards: Hazards::default(),
                 }],
             );
@@ -269,6 +271,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 400,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: world::Hazards {
                     drought: 0,
                     flood: 6_000,

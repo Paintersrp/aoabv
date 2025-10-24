@@ -31,6 +31,7 @@ pub struct Region {
     pub precipitation_mm: u16,
     pub albedo_milli: u16,
     pub freshwater_flux_tenths_mm: u16,
+    pub ice_mass_kilotons: u32,
     pub hazards: Hazards,
 }
 
@@ -48,16 +49,19 @@ pub struct World {
     pub width: u32,
     pub height: u32,
     pub regions: Vec<Region>,
+    pub climate: ClimateState,
 }
 
 impl World {
     pub fn new(seed: u64, width: u32, height: u32, regions: Vec<Region>) -> Self {
+        let climate = ClimateState::from_regions(&regions);
         Self {
             tick: 0,
             seed,
             width,
             height,
             regions,
+            climate,
         }
     }
 
@@ -67,5 +71,35 @@ impl World {
 
     pub fn region_index_from_key(key: &str) -> Option<usize> {
         key.strip_prefix("r:").and_then(|v| v.parse::<usize>().ok())
+    }
+}
+
+/// Slow-changing climate coordination state carried between ticks.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClimateState {
+    pub temperature_baseline_tenths: Vec<i16>,
+    pub last_albedo_milli: Vec<i32>,
+}
+
+impl ClimateState {
+    pub fn from_regions(regions: &[Region]) -> Self {
+        let temperature_baseline_tenths = vec![0; regions.len()];
+        let last_albedo_milli = regions
+            .iter()
+            .map(|region| i32::from(region.albedo_milli))
+            .collect();
+        Self {
+            temperature_baseline_tenths,
+            last_albedo_milli,
+        }
+    }
+
+    pub fn ensure_region_capacity(&mut self, region_count: usize) {
+        if self.temperature_baseline_tenths.len() < region_count {
+            self.temperature_baseline_tenths.resize(region_count, 0);
+        }
+        if self.last_albedo_milli.len() < region_count {
+            self.last_albedo_milli.resize(region_count, 0);
+        }
     }
 }

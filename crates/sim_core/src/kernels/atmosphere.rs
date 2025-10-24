@@ -231,13 +231,21 @@ pub fn update(world: &World, rng: &mut Stream) -> Result<Diff> {
 
         let effective_latitude = (region.latitude_deg - hadley_lat_shift).clamp(-90.0, 90.0);
         let hadley = hadley_strength(effective_latitude);
-        let temperature_tenths = compute_temperature_tenths(
+        let baseline_offset = world
+            .climate
+            .temperature_baseline_tenths
+            .get(index)
+            .copied()
+            .unwrap_or(0);
+        let mut temperature_tenths = compute_temperature_tenths(
             effective_latitude,
             region.elevation_m,
             humidity_ratio,
             insolation_bias,
         )
         .clamp(TEMP_MIN_TENTHS_C, TEMP_MAX_TENTHS_C);
+        temperature_tenths = (temperature_tenths + i32::from(baseline_offset))
+            .clamp(TEMP_MIN_TENTHS_C, TEMP_MAX_TENTHS_C);
         if i32::from(region.temperature_tenths_c) != temperature_tenths {
             diff.record_temperature(index, temperature_tenths);
         }
@@ -346,6 +354,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 400,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -361,6 +370,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -376,6 +386,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 380,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
         ];
@@ -433,6 +444,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -448,6 +460,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -463,6 +476,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
         ];
@@ -513,6 +527,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 350,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             }).collect();
 
@@ -544,6 +559,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -559,6 +575,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
         ];
@@ -597,6 +614,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 340,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -612,6 +630,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
             Region {
@@ -627,6 +646,7 @@ mod tests {
                 precipitation_mm: 0,
                 albedo_milli: 360,
                 freshwater_flux_tenths_mm: 0,
+                ice_mass_kilotons: 0,
                 hazards: Hazards::default(),
             },
         ];
