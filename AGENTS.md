@@ -47,13 +47,30 @@ A task is done when:
 
 > Viewer scripting: **C#** (fastest WS/client path) *or* GDScript; keep sim outside Godot. (We can later add a Rust GDExtension if needed, but not for v0.0.)
 
-### Update order per tick (fixed)
+### Update order per tick (fixed, top-level)
 
 ```
 CLIMATE → ECOLOGY → (later) EVOLUTION → COGNITION → SETTLEMENTS → INSTITUTIONS → MEMETICS → CONFLICT → CHRONICLE
 ```
 
+> **Rule:** Top-level stages are **fixed** at v0.x. Do **not** add/rename/remove top-level stages via code prompts. Any change requires a *separate* docs PR that updates this section and the systems contract.
+
 For v0.0 implement **CLIMATE → ECOLOGY → CHRONICLE** only.
+
+### CLIMATE sub-stages (v0.x, ordered, allowed to edit)
+All climate refinements must be implemented as **sub-steps inside CLIMATE** in this stable order:
+
+1. `CLIMATE.astronomy_substep`  
+2. `CLIMATE.geodynamics_substep`  
+3. `CLIMATE.atmosphere_substep`  
+4. `CLIMATE.cryosphere_substep`  
+5. `CLIMATE.coupler_substep`  *(deterministic feedbacks; may adjust **next-tick** baselines only)*
+
+**Constraints**
+- Deterministic RNG substreams per sub-step: `(seed, "CLIMATE::<substep>", tick)`.
+- No unordered reductions; gather and apply results in **sorted region index** order.
+- Commit **integer**, **sparse** diffs only; region keys `"r:<index>"`.
+- Feedbacks (e.g., albedo → temperature) are applied in `coupler_substep` and affect the **next tick** baseline, not the current tick.
 
 ---
 
@@ -115,6 +132,11 @@ Use `serde` structs mirroring the NDJSON for frames.
 * Avoid non-deterministic parallel reductions; when parallelizing (e.g., with `rayon`), gather results in a **stable order** (sorted index) before commit.
 * Use **fixed-point commit** for persisted state (e.g., `i64` Q32.32 or bounded `u16` ranges). Round/clamp before commit.
 * Avoid platform-dependent math (e.g., `f64::sin/cos` with wildly different libs). Prefer basic ops or deterministic approximations/tables where possible.
+
+**CLIMATE sub-stage determinism**
+- Each sub-stage uses its own RNG substream and must not depend on map iteration order.
+- Cross sub-stage write-after-write hazards are resolved by staging intermediate values and applying them in the coupler sub-step.
+- No panics; kernels return `Result<Diff, KernelError>` (or `anyhow::Result<_>` consistently).
 
 **Safety**
 
@@ -221,8 +243,9 @@ If a requested change violates determinism, data contracts, or non-goals, **refu
 
 ## 8) Refusal & escalation template
 
-* **Conflict with this doc** →
-  “Rejected: conflicts with agents.md §[section]. Propose a change by updating `/docs/systems_contract.md` and `/docs/cause_codes.md` in a separate PR with rationale.”
+* **Conflict with this doc (e.g., adding a new top-level stage)** →  
+  “Rejected: conflicts with agents.md §2 (Architecture). Submit a **doc change PR** that updates §2 to allow the change.  
+  **Note:** v0.x climate refinements must be authored as CLIMATE sub-stages; new top-level stages are not permitted without a doc PR.”
 
 * **Missing info** →
   “Insufficient spec: need [X]. I will proceed with the simplest deterministic default and document it unless directed otherwise.”
