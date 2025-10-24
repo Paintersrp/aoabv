@@ -51,3 +51,8 @@ data-sample:
 	$(PY) tools/datafetch/datafetch.py plan --sample --out -
 	$(PY) tools/datafetch/datafetch.py manifest --sample --out data/manifest/data_manifest.json
 	bash scripts/test_data_catalog.sh
+
+.PHONY: v0_2_validate
+v0_2_validate:
+	@chmod +x scripts/validate_v0_2.sh
+	@scripts/validate_v0_2.sh
