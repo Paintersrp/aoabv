@@ -20,6 +20,7 @@
 | `drought_flag` | ecology | Water level under 7_000 (scaled) after ecology adjustments. |
 | `flood_flag` | ecology | Water level above 8_500 (scaled) after ecology adjustments. |
 | `albedo_feedback` | cryosphere, coupler | Surface albedo updated from snow/ice coverage or the coupler feedback loop; note records `milli=<value>`. |
+| `permafrost_thaw` | cryosphere | Active-layer depth increased due to seasonal thaw; note records `depth_cm`. |
 | `glacier_mass_balance` | cryosphere | Degree-day accumulation versus melt; note records `balance_mm`. |
 | `freshwater_pulse` | cryosphere | Freshwater discharge from ice melt; note records `tenths_mm`. |
 | `snowmelt_surge` | cryosphere | Rapid snowpack melt entered regional waterways; note records `mm`. |
