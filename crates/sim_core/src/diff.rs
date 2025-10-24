@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use serde::ser::{SerializeMap, SerializeStruct};
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ pub struct Diff {
     pub tide_envelope: Vec<ScalarValue>,
     pub elevation: Vec<ScalarValue>,
     pub temperature: Vec<ScalarValue>,
+    pub temperature_baseline: Vec<ScalarValue>,
     pub precipitation: Vec<ScalarValue>,
     pub humidity: Vec<ScalarValue>,
     pub albedo: Vec<ScalarValue>,
@@ -22,7 +24,7 @@ pub struct Diff {
     pub ice_mass: Vec<ScalarValue>,
     pub hazards: Vec<HazardEvent>,
     pub causes: Vec<Entry>,
-    pub diag_energy: Option<DiagEnergy>,
+    pub diagnostics: BTreeMap<String, i32>,
 }
 
 impl Diff {
@@ -58,6 +60,10 @@ impl Diff {
 
     pub fn record_temperature(&mut self, region_index: usize, value: i32) {
         Self::set_scalar_value(&mut self.temperature, region_index as u32, value);
+    }
+
+    pub fn record_temperature_baseline(&mut self, region_index: usize, value: i32) {
+        Self::set_scalar_value(&mut self.temperature_baseline, region_index as u32, value);
     }
 
     pub fn record_precipitation(&mut self, region_index: usize, value: i32) {
@@ -125,8 +131,8 @@ impl Diff {
         }
     }
 
-    pub fn record_diag_energy(&mut self, diag: DiagEnergy) {
-        self.diag_energy = Some(diag);
+    pub fn record_diagnostic<S: Into<String>>(&mut self, key: S, value: i32) {
+        self.diagnostics.insert(key.into(), value);
     }
 
     pub fn merge(&mut self, other: &Diff) {
@@ -151,6 +157,9 @@ impl Diff {
         for scalar in &other.temperature {
             Self::set_scalar_value(&mut self.temperature, scalar.region, scalar.value);
         }
+        for scalar in &other.temperature_baseline {
+            Self::set_scalar_value(&mut self.temperature_baseline, scalar.region, scalar.value);
+        }
         for scalar in &other.precipitation {
             Self::set_scalar_value(&mut self.precipitation, scalar.region, scalar.value);
         }
@@ -172,8 +181,8 @@ impl Diff {
         for cause in other.causes.iter().cloned() {
             self.record_cause(cause);
         }
-        if let Some(diag) = &other.diag_energy {
-            self.diag_energy = Some(diag.clone());
+        for (key, value) in &other.diagnostics {
+            self.diagnostics.insert(key.clone(), *value);
         }
     }
 
@@ -189,6 +198,7 @@ impl Diff {
             && self.tide_envelope.is_empty()
             && self.elevation.is_empty()
             && self.temperature.is_empty()
+            && self.temperature_baseline.is_empty()
             && self.precipitation.is_empty()
             && self.humidity.is_empty()
             && self.albedo.is_empty()
@@ -196,7 +206,7 @@ impl Diff {
             && self.ice_mass.is_empty()
             && self.hazards.is_empty()
             && self.causes.is_empty()
-            && self.diag_energy.is_none()
+            && self.diagnostics.is_empty()
     }
 
     fn set_biome_value(&mut self, region: u32, biome: i32) {
@@ -246,12 +256,6 @@ pub struct ResourceDelta {
 pub struct ScalarValue {
     pub region: u32,
     pub value: i32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DiagEnergy {
-    pub albedo_anomaly_milli: i32,
-    pub temp_adjust_tenths: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -306,7 +310,7 @@ impl Serialize for Diff {
         if !self.hazards.is_empty() {
             field_count += 1;
         }
-        if self.diag_energy.is_some() {
+        if !self.diagnostics.is_empty() {
             field_count += 1;
         }
         let mut state = serializer.serialize_struct("Diff", field_count)?;
@@ -349,8 +353,8 @@ impl Serialize for Diff {
         if !self.hazards.is_empty() {
             state.serialize_field("hazards", &self.hazards)?;
         }
-        if let Some(diag) = &self.diag_energy {
-            state.serialize_field("diag_energy", diag)?;
+        if !self.diagnostics.is_empty() {
+            state.serialize_field("diagnostics", &self.diagnostics)?;
         }
         state.end()
     }

@@ -18,6 +18,7 @@ pub fn apply(world: &mut World, mut diff: Diff) {
     diff.tide_envelope.sort_by_key(|value| value.region);
     diff.elevation.sort_by_key(|value| value.region);
     diff.temperature.sort_by_key(|value| value.region);
+    diff.temperature_baseline.sort_by_key(|value| value.region);
     diff.precipitation.sort_by_key(|value| value.region);
     diff.humidity.sort_by_key(|value| value.region);
     diff.albedo.sort_by_key(|value| value.region);
@@ -63,6 +64,16 @@ pub fn apply(world: &mut World, mut diff: Diff) {
         if let Some(region) = world.regions.get_mut(value.region as usize) {
             region.temperature_tenths_c =
                 clamp_i16(value.value, TEMP_MIN_TENTHS_C, TEMP_MAX_TENTHS_C);
+        }
+    }
+
+    for value in diff.temperature_baseline {
+        if let Some(slot) = world
+            .climate
+            .temperature_baseline_tenths
+            .get_mut(value.region as usize)
+        {
+            *slot = clamp_i16(value.value, TEMP_MIN_TENTHS_C, TEMP_MAX_TENTHS_C);
         }
     }
 

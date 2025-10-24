@@ -22,7 +22,7 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
     "ice_mass": {"r:42": 12500},
     "water": {"r:42": 120}
   },
-  "diag_energy": {"albedo_anomaly_milli": -45, "temp_adjust_tenths": -3},
+  "diagnostics": {"energy_balance": -1, "albedo_anomaly_milli": -45},
   "highlights": [
     {"type": "hazard_flag", "region": 42, "info": {"kind": "drought", "level": 0.43}}
   ],
@@ -48,10 +48,10 @@ Each NDJSON line emitted by `simd`/`simstep` serialises the following structure:
 * `chronicle` — Ordered list of short factual sentences per tick.
 * `era_end` — `true` once the long-term arc for the seed finishes (unused in v0.0).
 
-When present, `diag_energy` captures global climate bookkeeping for the current tick:
+When present, `diagnostics` captures global climate bookkeeping for the current tick:
 
+* `energy_balance` — Mean temperature baseline adjustment (tenths of °C) scheduled for the next tick.
 * `albedo_anomaly_milli` — Mean albedo anomaly in milli-units across regions that triggered reconciliation.
-* `temp_adjust_tenths` — Mean temperature baseline adjustment (tenths of °C) scheduled for the next tick.
 
 ## Seed schema
 

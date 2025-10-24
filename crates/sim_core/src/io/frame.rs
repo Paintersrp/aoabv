@@ -86,6 +86,8 @@ pub struct Frame {
     pub world: FrameWorldMeta,
     #[serde(skip_serializing_if = "FrameDiff::is_empty", default)]
     pub diff: FrameDiff,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub diagnostics: BTreeMap<String, i32>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub highlights: Vec<Highlight>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
@@ -162,6 +164,7 @@ pub fn make_frame(
     Frame {
         t,
         diff: frame_diff,
+        diagnostics: diff.diagnostics,
         world: FrameWorldMeta { width, height },
         highlights,
         chronicle,
@@ -280,5 +283,32 @@ mod tests {
             .as_object()
             .expect("freshwater is object");
         assert_eq!(freshwater.get("r:2").and_then(|v| v.as_i64()), Some(1_234));
+    }
+
+    #[test]
+    fn frame_carries_diagnostics_map() {
+        let mut diff = Diff::default();
+        diff.record_diagnostic("energy_balance", -1);
+        diff.record_diagnostic("albedo_anomaly_milli", -12);
+
+        let frame = make_frame(5, diff, Vec::new(), Vec::new(), false, 4, 1);
+        let json_line = frame.to_ndjson().expect("frame serializes");
+        let value: serde_json::Value =
+            serde_json::from_str(json_line.trim_end()).expect("valid json");
+        let diagnostics = value
+            .get("diagnostics")
+            .expect("diagnostics present")
+            .as_object()
+            .expect("diagnostics is object");
+        assert_eq!(
+            diagnostics.get("energy_balance").and_then(|v| v.as_i64()),
+            Some(-1)
+        );
+        assert_eq!(
+            diagnostics
+                .get("albedo_anomaly_milli")
+                .and_then(|v| v.as_i64()),
+            Some(-12)
+        );
     }
 }
