@@ -1,14 +1,8 @@
-use anyhow::{ensure, Result};
-
-use crate::cause::{Code, Entry};
-use crate::diff::Diff;
 use crate::fixed::{resource_ratio, WATER_MAX};
-use crate::rng::Stream;
-use crate::schedule::KernelRun;
-use crate::world::{Region, World};
+use crate::world::Region;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum LatitudeBelt {
+#[derive(Debug, Clone, Copy)]
+pub(super) enum LatitudeBelt {
     Equatorial,
     Subtropical,
     Temperate,
@@ -17,7 +11,7 @@ enum LatitudeBelt {
 }
 
 impl LatitudeBelt {
-    fn from_latitude(latitude: f64) -> Self {
+    pub(super) fn from_latitude(latitude: f64) -> Self {
         let lat = latitude.abs();
         if lat < 15.0 {
             Self::Equatorial
@@ -32,7 +26,7 @@ impl LatitudeBelt {
         }
     }
 
-    fn label(&self) -> &'static str {
+    pub(super) fn label(&self) -> &'static str {
         match self {
             Self::Equatorial => "equatorial",
             Self::Subtropical => "subtropical",
@@ -43,7 +37,7 @@ impl LatitudeBelt {
     }
 }
 
-fn classify_biome(belt: &LatitudeBelt, dryness: f64) -> u8 {
+pub(super) fn classify_biome(belt: &LatitudeBelt, dryness: f64) -> u8 {
     let dryness = dryness.clamp(0.0, 1.0);
     match belt {
         LatitudeBelt::Equatorial => {
@@ -84,7 +78,7 @@ fn classify_biome(belt: &LatitudeBelt, dryness: f64) -> u8 {
     }
 }
 
-fn biome_label(biome: u8) -> &'static str {
+pub(super) fn biome_label(biome: u8) -> &'static str {
     match biome {
         5 => "rainforest",
         4 => "desert",
@@ -95,322 +89,9 @@ fn biome_label(biome: u8) -> &'static str {
     }
 }
 
-fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
+pub(super) fn dryness_score(region: &Region, seasonal_shift: f64) -> f64 {
     let moisture = resource_ratio(region.water, WATER_MAX);
     let elevation = (f64::from(region.elevation_m) / 3_000.0).clamp(0.0, 1.0);
     let baseline = 1.0 - moisture;
     (baseline * 0.6 + elevation * 0.3 + seasonal_shift * 0.1).clamp(0.0, 1.0)
-}
-
-fn orographic_lift_indicator(world: &World, region: &Region) -> f64 {
-    let width = world.width as i32;
-    let height = world.height as i32;
-    let x = region.x as i32;
-    let y = region.y as i32;
-    let mut sum = 0_i64;
-    let mut count = 0_i32;
-    const OFFSETS: &[(i32, i32)] = &[(-1, 0), (1, 0), (0, -1), (0, 1)];
-    for (dx, dy) in OFFSETS {
-        let nx = x + dx;
-        let ny = y + dy;
-        if nx < 0 || nx >= width || ny < 0 || ny >= height {
-            continue;
-        }
-        let neighbor_index = (ny * width + nx) as usize;
-        if let Some(neighbor) = world.regions.get(neighbor_index) {
-            sum += i64::from(neighbor.elevation_m);
-            count += 1;
-        }
-    }
-    if count == 0 {
-        return 0.0;
-    }
-    let neighbor_mean = sum as f64 / f64::from(count);
-    ((f64::from(region.elevation_m) - neighbor_mean) / 1_000.0).max(0.0)
-}
-
-pub fn update(world: &World, rng: &mut Stream) -> Result<KernelRun> {
-    let mut diff = Diff::default();
-    let mut chronicle = Vec::new();
-
-    for (index, region) in world.regions.iter().enumerate() {
-        ensure!(
-            region.index() == index,
-            "region id {} does not match index {}",
-            region.id,
-            index
-        );
-        let belt = LatitudeBelt::from_latitude(region.latitude_deg);
-        let mut region_rng = rng.derive(region.index() as u64);
-        let seasonal_shift = region_rng.next_signed_unit();
-        let dryness = dryness_score(region, seasonal_shift);
-        let biome = classify_biome(&belt, dryness);
-        let orographic_lift = orographic_lift_indicator(world, region);
-        if biome != region.biome {
-            diff.record_biome(region.index(), biome);
-            chronicle.push(format!(
-                "Region {} shifted toward a {} biome.",
-                region.id,
-                biome_label(biome)
-            ));
-        }
-        diff.record_cause(Entry::new(
-            format!("region:{}/biome", region.id),
-            Code::LatitudeBelt,
-            Some(format!("{}", belt.label())),
-        ));
-        diff.record_cause(Entry::new(
-            format!("region:{}/biome", region.id),
-            Code::SeasonalityVariance,
-            Some(format!("{:.3}", seasonal_shift)),
-        ));
-        diff.record_cause(Entry::new(
-            format!("region:{}/biome", region.id),
-            Code::OrographicLift,
-            Some(format!("lift_km={:.3}", orographic_lift)),
-        ));
-    }
-
-    Ok(KernelRun {
-        diff,
-        chronicle,
-        highlights: Vec::new(),
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::kernels::climate::STAGE;
-    use crate::rng::Stream;
-    use crate::world::{Hazards, Region, World};
-
-    #[test]
-    fn biome_classification_varies_by_latitude() {
-        struct BeltCase {
-            latitude: f64,
-            /// Allowed biome tiers for this latitude band (wettest to driest).
-            allowed_biomes: &'static [u8],
-            label: &'static str,
-        }
-
-        // Documented expectations for maintainability. Keep in sync with
-        // `classify_biome` whenever biome tiers change.
-        //
-        // Latitude → biome ladder (wet → dry):
-        // * equatorial (<15°): rainforest (5) → steppe (3) → desert (4)
-        // * subtropical (<30°): rainforest (5) → savannah/temperate mix (2) → desert (4)
-        // * temperate (<45°): temperate forest (2) → boreal/grassland mix (1) → steppe (3)
-        // * subpolar (<60°): boreal mix (1) → polar tundra (0)
-        // * polar (≥60°): polar tundra/ice (0)
-        let belt_cases = [
-            BeltCase {
-                latitude: 0.0,
-                allowed_biomes: &[5, 3, 4],
-                label: "equatorial",
-            },
-            BeltCase {
-                latitude: 20.0,
-                allowed_biomes: &[5, 2, 4],
-                label: "subtropical",
-            },
-            BeltCase {
-                latitude: 35.0,
-                allowed_biomes: &[2, 1, 3],
-                label: "temperate",
-            },
-            BeltCase {
-                latitude: 50.0,
-                allowed_biomes: &[1, 0],
-                label: "subpolar",
-            },
-            BeltCase {
-                latitude: 70.0,
-                allowed_biomes: &[0],
-                label: "polar",
-            },
-        ];
-
-        const TEST_SEED: u64 = 0xA5A5_F0F0_A5A5_F0F0;
-        const TEST_TICK: u64 = 7;
-
-        let regions: Vec<Region> = belt_cases
-            .iter()
-            .enumerate()
-            .map(|(i, case)| Region {
-                id: i as u32,
-                x: i as u32,
-                y: 0,
-                elevation_m: 100,
-                latitude_deg: case.latitude,
-                biome: u8::MAX, // ensure every case records a biome diff
-                water: 5_000,
-                soil: 5_000,
-                temperature_tenths_c: 0,
-                precipitation_mm: 0,
-                albedo_milli: 400,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 0,
-                hazards: Hazards::default(),
-            })
-            .collect();
-
-        let world = World::new(TEST_SEED, belt_cases.len() as u32, 1, regions);
-        // Fixed RNG seed + tick ensure deterministic seasonal shifts across runs.
-        let mut rng = Stream::from(TEST_SEED, STAGE, TEST_TICK);
-        let run = update(&world, &mut rng).expect("climate update should succeed");
-        let diff = run.diff;
-
-        assert_eq!(diff.biome.len(), belt_cases.len());
-
-        for (index, case) in belt_cases.iter().enumerate() {
-            let belt = LatitudeBelt::from_latitude(case.latitude);
-            let change = diff
-                .biome
-                .iter()
-                .find(|entry| entry.region as usize == index)
-                .expect("expected biome change for test region");
-            let biome = change.biome as u8;
-
-            assert!(
-                case.allowed_biomes.contains(&biome),
-                "{} belt produced biome {}, expected one of {:?}",
-                case.label,
-                biome,
-                case.allowed_biomes
-            );
-
-            if matches!(belt, LatitudeBelt::Equatorial) {
-                assert_ne!(
-                    biome, 0,
-                    "equatorial regions should never resolve to the polar biome"
-                );
-            }
-
-            if matches!(belt, LatitudeBelt::Polar) {
-                assert_eq!(
-                    biome, 0,
-                    "polar regions should be able to resolve to the polar biome"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn orographic_lift_cause_for_elevated_regions() {
-        let regions = vec![
-            Region {
-                id: 0,
-                x: 0,
-                y: 0,
-                elevation_m: 200,
-                latitude_deg: 0.0,
-                biome: 0,
-                water: 5_000,
-                soil: 5_000,
-                temperature_tenths_c: 0,
-                precipitation_mm: 0,
-                albedo_milli: 400,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 0,
-                hazards: Hazards::default(),
-            },
-            Region {
-                id: 1,
-                x: 1,
-                y: 0,
-                elevation_m: 1_800,
-                latitude_deg: 0.0,
-                biome: 0,
-                water: 5_000,
-                soil: 5_000,
-                temperature_tenths_c: 0,
-                precipitation_mm: 0,
-                albedo_milli: 400,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 0,
-                hazards: Hazards::default(),
-            },
-            Region {
-                id: 2,
-                x: 2,
-                y: 0,
-                elevation_m: 200,
-                latitude_deg: 0.0,
-                biome: 0,
-                water: 5_000,
-                soil: 5_000,
-                temperature_tenths_c: 0,
-                precipitation_mm: 0,
-                albedo_milli: 400,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 0,
-                hazards: Hazards::default(),
-            },
-        ];
-        let world = World::new(17, 3, 1, regions);
-        let mut rng = Stream::from(world.seed, STAGE, 1);
-        let diff = update(&world, &mut rng).unwrap().diff;
-        let target = "region:1/biome";
-        let lift_entry = diff
-            .causes
-            .iter()
-            .find(|entry| entry.code == Code::OrographicLift && entry.target == target)
-            .expect("orographic lift entry for elevated region");
-        let lift_note = lift_entry
-            .note
-            .as_ref()
-            .and_then(|note| note.strip_prefix("lift_km="))
-            .and_then(|value| value.parse::<f64>().ok())
-            .expect("lift note to include lift_km= prefix with numeric value");
-        assert!(lift_note > 0.0, "expected positive lift, got {}", lift_note);
-    }
-
-    #[test]
-    fn orographic_lift_cause_is_deterministic() {
-        let regions = vec![
-            Region {
-                id: 0,
-                x: 0,
-                y: 0,
-                elevation_m: 200,
-                latitude_deg: 0.0,
-                biome: 0,
-                water: 5_000,
-                soil: 5_000,
-                temperature_tenths_c: 0,
-                precipitation_mm: 0,
-                albedo_milli: 400,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 0,
-                hazards: Hazards::default(),
-            },
-            Region {
-                id: 1,
-                x: 1,
-                y: 0,
-                elevation_m: 1_200,
-                latitude_deg: 0.0,
-                biome: 0,
-                water: 5_500,
-                soil: 5_000,
-                temperature_tenths_c: 0,
-                precipitation_mm: 0,
-                albedo_milli: 380,
-                freshwater_flux_tenths_mm: 0,
-                ice_mass_kilotons: 0,
-                hazards: Hazards::default(),
-            },
-        ];
-
-        let world = World::new(99, 2, 2, regions);
-        let mut rng_a = Stream::from(world.seed, STAGE, 4);
-        let mut rng_b = Stream::from(world.seed, STAGE, 4);
-
-        let run_a = update(&world, &mut rng_a).expect("first run succeeds");
-        let run_b = update(&world, &mut rng_b).expect("second run succeeds");
-
-        assert_eq!(run_a.diff.causes, run_b.diff.causes);
-        assert_eq!(run_a.chronicle, run_b.chronicle);
-    }
 }
