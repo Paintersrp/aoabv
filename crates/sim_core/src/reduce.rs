@@ -31,6 +31,16 @@ pub fn apply(world: &mut World, mut diff: Diff) {
         }
     }
 
+    for value in &diff.insolation {
+        if let Some(slot) = world
+            .climate
+            .last_insolation_tenths
+            .get_mut(value.region as usize)
+        {
+            *slot = value.value;
+        }
+    }
+
     for delta in diff.water {
         if let Some(region) = world.regions.get_mut(delta.region as usize) {
             region.water = commit_resource_delta(region.water, delta.delta, WATER_MAX);

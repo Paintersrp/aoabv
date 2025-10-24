@@ -2,7 +2,8 @@ use crate::rng::Stream;
 use crate::world::World;
 
 use super::{
-    OROGRAPHIC_LIFT_THRESHOLD_KM, PRECIP_MULTIPLIER_MAX, PRECIP_MULTIPLIER_MIN, RAIN_SHADOW_MAX,
+    HUMIDITY_TENTHS_MAX, OROGRAPHIC_LIFT_THRESHOLD_KM, PRECIP_MULTIPLIER_MAX,
+    PRECIP_MULTIPLIER_MIN, RAIN_SHADOW_MAX,
 };
 
 #[derive(Debug)]
@@ -13,12 +14,17 @@ pub(super) struct OrographyEffects {
     pub rain_shadow_factors: Vec<f64>,
 }
 
-pub(super) fn apply(world: &World, stream: &Stream, humidity: &mut [f64]) -> OrographyEffects {
+pub(super) fn apply(
+    world: &World,
+    stream: &Stream,
+    humidity_tenths: &mut [i32],
+) -> OrographyEffects {
     let total_regions = world.regions.len();
     let mut precip_multipliers = vec![1.0f64; total_regions];
     let mut lift_gradients = vec![0.0f64; total_regions];
     let mut lift_multipliers = vec![1.0f64; total_regions];
     let mut rain_shadow_factors = vec![0.0f64; total_regions];
+    let tenths_max = f64::from(HUMIDITY_TENTHS_MAX);
 
     for (index, region) in world.regions.iter().enumerate() {
         let (wind_dx, wind_dy) = prevailing_wind(region.latitude_deg);
@@ -38,7 +44,10 @@ pub(super) fn apply(world: &World, stream: &Stream, humidity: &mut [f64]) -> Oro
             if gradient_km >= OROGRAPHIC_LIFT_THRESHOLD_KM {
                 let random_factor = 0.85 + lift_jitter * 0.3;
                 let lift = gradient_km * 0.25 * random_factor;
-                humidity[index] = (humidity[index] + lift).clamp(0.0, 1.0);
+                let mut humidity_ratio = f64::from(humidity_tenths[index]) / tenths_max;
+                humidity_ratio = (humidity_ratio + lift).clamp(0.0, 1.0);
+                humidity_tenths[index] =
+                    ((humidity_ratio * tenths_max).round() as i32).clamp(0, HUMIDITY_TENTHS_MAX);
                 let multiplier = (1.0 + lift * 0.8).clamp(1.0, PRECIP_MULTIPLIER_MAX);
                 precip_multipliers[index] *= multiplier;
                 lift_gradients[index] = gradient_km;
@@ -49,8 +58,12 @@ pub(super) fn apply(world: &World, stream: &Stream, humidity: &mut [f64]) -> Oro
                 if let Some(downwind_index) = region_index_at(world, downwind_x, downwind_y) {
                     let dryness_base = gradient_km * (0.18 + shadow_jitter * 0.12);
                     let dryness = dryness_base.clamp(0.0, RAIN_SHADOW_MAX);
-                    humidity[downwind_index] =
-                        (humidity[downwind_index] * (1.0 - dryness)).clamp(0.0, 1.0);
+                    let mut downwind_ratio =
+                        f64::from(humidity_tenths[downwind_index]) / tenths_max;
+                    downwind_ratio = (downwind_ratio * (1.0 - dryness)).clamp(0.0, 1.0);
+                    humidity_tenths[downwind_index] = ((downwind_ratio * tenths_max).round()
+                        as i32)
+                        .clamp(0, HUMIDITY_TENTHS_MAX);
                     let rain_multiplier = (1.0 - dryness * 0.65).clamp(PRECIP_MULTIPLIER_MIN, 1.0);
                     precip_multipliers[downwind_index] *= rain_multiplier;
                     rain_shadow_factors[downwind_index] =

@@ -70,7 +70,9 @@ pub fn tick_once(
         atmosphere::STAGE,
         |world, rng| atmosphere::update(&*world, rng),
     )?;
-    chronicle.extend(atmosphere_run.chronicle);
+    if !atmosphere_run.chronicle.is_empty() {
+        chronicle.push("Moist air rose along highlands; leeward valleys dried.".to_string());
+    }
     highlights.extend(atmosphere_run.highlights);
 
     let cryosphere_run = run_kernel(

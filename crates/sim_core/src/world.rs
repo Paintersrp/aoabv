@@ -79,6 +79,7 @@ impl World {
 pub struct ClimateState {
     pub temperature_baseline_tenths: Vec<i16>,
     pub last_albedo_milli: Vec<i32>,
+    pub last_insolation_tenths: Vec<i32>,
 }
 
 impl ClimateState {
@@ -88,9 +89,11 @@ impl ClimateState {
             .iter()
             .map(|region| i32::from(region.albedo_milli))
             .collect();
+        let last_insolation_tenths = vec![0; regions.len()];
         Self {
             temperature_baseline_tenths,
             last_albedo_milli,
+            last_insolation_tenths,
         }
     }
 
@@ -100,6 +103,9 @@ impl ClimateState {
         }
         if self.last_albedo_milli.len() < region_count {
             self.last_albedo_milli.resize(region_count, 0);
+        }
+        if self.last_insolation_tenths.len() < region_count {
+            self.last_insolation_tenths.resize(region_count, 0);
         }
     }
 }
